@@ -46,7 +46,7 @@ import {
   shouldAcceptSlidesForCurrentPage,
   shouldInvalidateCurrentSource,
 } from "./session-policy";
-import { installStepsHtml, wireSetupButtons } from "./setup-view";
+import { createSetupRuntime, friendlyFetchError } from "./setup-runtime";
 import { normalizeSlideImageUrl } from "./slide-images";
 import { createSlidesHydrator } from "./slides-hydrator";
 import { hasResolvedSlidesPayload } from "./slides-pending";
@@ -1397,30 +1397,6 @@ async function restoreChatHistory() {
   await chatHistoryRuntime.restore(activeTabId, panelState.summaryMarkdown);
 }
 
-type PlatformKind = "mac" | "windows" | "linux" | "other";
-
-function resolvePlatformKind(): PlatformKind {
-  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
-  const raw = (nav.userAgentData?.platform ?? navigator.platform ?? navigator.userAgent ?? "")
-    .toLowerCase()
-    .trim();
-
-  if (raw.includes("mac")) return "mac";
-  if (raw.includes("win")) return "windows";
-  if (raw.includes("linux") || raw.includes("cros") || raw.includes("chrome os")) return "linux";
-  return "other";
-}
-
-const platformKind = resolvePlatformKind();
-
-function friendlyFetchError(err: unknown, context: string): string {
-  const message = err instanceof Error ? err.message : String(err);
-  if (message.toLowerCase() === "failed to fetch") {
-    return `${context}: Failed to fetch (daemon unreachable or blocked by Chrome; try \`summarize daemon status\`, maybe \`summarize daemon restart\`, and check ~/.summarize/logs/daemon.err.log)`;
-  }
-  return `${context}: ${message}`;
-}
-
 const modelPresetsController = createModelPresetsController({
   modelPresetEl,
   modelCustomEl,
@@ -1718,64 +1694,16 @@ async function ensureToken(): Promise<string> {
   await patchSettings({ token });
   return token;
 }
-
-function renderSetup(token: string) {
-  setupEl.classList.remove("hidden");
-  setupEl.innerHTML = installStepsHtml({
-    token,
-    headline: "Setup",
-    message: "Install summarize, then register the daemon so the side panel can stream summaries.",
-    platformKind,
-  });
-  wireSetupButtons({
-    setupEl,
-    token,
-    platformKind,
-    headerSetStatus: (text) => headerController.setStatus(text),
-    getStatusResetText: () => panelState.ui?.status ?? "",
-    patchSettings,
-    generateToken,
-    renderSetup,
-  });
-}
-
-function maybeShowSetup(state: UiState): boolean {
-  if (!state.settings.tokenPresent) {
-    void (async () => {
-      const token = await ensureToken();
-      renderSetup(token);
-    })();
-    return true;
-  }
-  if (!state.daemon.ok || !state.daemon.authed) {
-    setupEl.classList.remove("hidden");
-    const token = (async () => (await loadSettings()).token.trim())();
-    void token.then((t) => {
-      setupEl.innerHTML = `
-        ${installStepsHtml({
-          token: t,
-          headline: "Daemon not reachable",
-          message: state.daemon.error ?? "Check that the LaunchAgent is installed.",
-          platformKind,
-          showTroubleshooting: true,
-        })}
-      `;
-      wireSetupButtons({
-        setupEl,
-        token: t,
-        platformKind,
-        headerSetStatus: (text) => headerController.setStatus(text),
-        getStatusResetText: () => panelState.ui?.status ?? "",
-        patchSettings,
-        generateToken,
-        renderSetup,
-      });
-    });
-    return true;
-  }
-  setupEl.classList.add("hidden");
-  return false;
-}
+const setupRuntime = createSetupRuntime({
+  setupEl,
+  loadToken: async () => (await loadSettings()).token.trim(),
+  ensureToken,
+  patchSettings,
+  generateToken,
+  headerSetStatus: (text) => headerController.setStatus(text),
+  getStatusResetText: () => panelState.ui?.status ?? "",
+});
+const { maybeShowSetup } = setupRuntime;
 
 function updateControls(state: UiState) {
   if (state.panelOpen && !lastPanelOpen) {
