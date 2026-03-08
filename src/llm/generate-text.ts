@@ -1,5 +1,5 @@
 import type { Context } from "@mariozechner/pi-ai";
-import { completeSimple, streamSimple } from "@mariozechner/pi-ai";
+import { completeSimple } from "@mariozechner/pi-ai";
 import { createUnsupportedFunctionalityError } from "./errors.js";
 import {
   computeRetryDelayMs,
@@ -9,14 +9,13 @@ import {
   resolveEffectiveTemperature,
   resolveGoogleEmptyResponseFallbackModelId,
   sleep,
-  streamUsageWithTimeout,
 } from "./generate-text-shared.js";
+import { streamTextWithContext } from "./generate-text-stream.js";
 import { parseGatewayStyleModelId } from "./model-id.js";
 import type { Prompt } from "./prompt.js";
 import {
   resolveOpenAiCompatibleClientConfigForProvider,
   supportsDocumentAttachments,
-  supportsStreaming,
 } from "./provider-capabilities.js";
 import {
   completeAnthropicDocument,
@@ -28,8 +27,8 @@ import {
   resolveAnthropicModel,
   resolveGoogleModel,
   resolveOpenAiModel,
-  resolveXaiModel,
   resolveNvidiaModel,
+  resolveXaiModel,
   resolveZaiModel,
 } from "./providers/models.js";
 import {
@@ -41,6 +40,7 @@ import { extractText } from "./providers/shared.js";
 import type { OpenAiClientConfig } from "./providers/types.js";
 import type { LlmTokenUsage } from "./types.js";
 import { normalizeTokenUsage } from "./usage.js";
+export { streamTextWithContext } from "./generate-text-stream.js";
 
 export type LlmApiKeys = {
   xaiApiKey: string | null;
@@ -507,285 +507,4 @@ export async function streamTextWithModelId({
     xaiBaseUrlOverride,
     forceChatCompletions,
   });
-}
-
-export async function streamTextWithContext({
-  modelId,
-  apiKeys,
-  context,
-  temperature,
-  maxOutputTokens,
-  timeoutMs,
-  fetchImpl,
-  forceOpenRouter,
-  openaiBaseUrlOverride,
-  anthropicBaseUrlOverride,
-  googleBaseUrlOverride,
-  xaiBaseUrlOverride,
-  forceChatCompletions,
-}: {
-  modelId: string;
-  apiKeys: LlmApiKeys;
-  context: Context;
-  temperature?: number;
-  maxOutputTokens?: number;
-  timeoutMs: number;
-  fetchImpl: typeof fetch;
-  forceOpenRouter?: boolean;
-  openaiBaseUrlOverride?: string | null;
-  anthropicBaseUrlOverride?: string | null;
-  googleBaseUrlOverride?: string | null;
-  xaiBaseUrlOverride?: string | null;
-  forceChatCompletions?: boolean;
-}): Promise<{
-  textStream: AsyncIterable<string>;
-  canonicalModelId: string;
-  provider: "xai" | "openai" | "google" | "anthropic" | "zai" | "nvidia";
-  usage: Promise<LlmTokenUsage | null>;
-  lastError: () => unknown;
-}> {
-  const parsed = parseGatewayStyleModelId(modelId);
-  if (!supportsStreaming(parsed.provider)) {
-    throw createUnsupportedFunctionalityError(
-      `streaming is not supported for ${parsed.provider}/... models`,
-    );
-  }
-  const effectiveTemperature = resolveEffectiveTemperature({
-    provider: parsed.provider,
-    model: parsed.model,
-    temperature,
-  });
-  void fetchImpl;
-
-  const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const startedAtMs = Date.now();
-  let lastError: unknown = null;
-  const timeoutError = new Error("LLM request timed out");
-  const markTimedOut = () => {
-    if (lastError === timeoutError) return;
-    lastError = timeoutError;
-    controller.abort();
-  };
-
-  const startTimeout = () => {
-    if (timeoutId) return;
-    timeoutId = setTimeout(markTimedOut, timeoutMs);
-  };
-
-  const stopTimeout = () => {
-    if (!timeoutId) return;
-    clearTimeout(timeoutId);
-    timeoutId = null;
-  };
-
-  const nextWithDeadline = async <T>(promise: Promise<T>): Promise<T> => {
-    const elapsed = Date.now() - startedAtMs;
-    const remaining = timeoutMs - elapsed;
-    if (remaining <= 0) {
-      markTimedOut();
-      throw timeoutError;
-    }
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            markTimedOut();
-            reject(timeoutError);
-          }, remaining);
-        }),
-      ]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  };
-
-  const wrapTextStream = (textStream: AsyncIterable<string>): AsyncIterable<string> => ({
-    async *[Symbol.asyncIterator]() {
-      startTimeout();
-      const iterator = textStream[Symbol.asyncIterator]();
-      try {
-        while (true) {
-          const result = await nextWithDeadline(iterator.next());
-          if (result.done) break;
-          yield result.value;
-        }
-      } finally {
-        stopTimeout();
-        if (typeof iterator.return === "function") {
-          const cleanup = iterator.return();
-          const cleanupPromise =
-            typeof cleanup === "undefined" ? undefined : (cleanup as Promise<unknown>);
-          if (typeof cleanupPromise?.catch === "function") {
-            void cleanupPromise.catch(() => {});
-          }
-        }
-      }
-    },
-  });
-
-  try {
-    if (parsed.provider === "xai") {
-      const apiKey = apiKeys.xaiApiKey;
-      if (!apiKey) throw new Error("Missing XAI_API_KEY for xai/... model");
-      const model = resolveXaiModel({
-        modelId: parsed.model,
-        context,
-        xaiBaseUrlOverride,
-      });
-      const stream = streamSimple(model, context, {
-        ...(typeof effectiveTemperature === "number" ? { temperature: effectiveTemperature } : {}),
-        ...(typeof maxOutputTokens === "number" ? { maxTokens: maxOutputTokens } : {}),
-        apiKey,
-        signal: controller.signal,
-      });
-
-      const textStream: AsyncIterable<string> = {
-        async *[Symbol.asyncIterator]() {
-          for await (const event of stream) {
-            if (event.type === "text_delta") yield event.delta;
-            if (event.type === "error") {
-              lastError = event.error;
-              break;
-            }
-          }
-        },
-      };
-      return {
-        textStream: wrapTextStream(textStream),
-        canonicalModelId: parsed.canonical,
-        provider: parsed.provider,
-        usage: streamUsageWithTimeout({ result: stream.result(), timeoutMs }),
-        lastError: () => lastError,
-      };
-    }
-
-    if (parsed.provider === "google") {
-      const apiKey = apiKeys.googleApiKey;
-      if (!apiKey)
-        throw new Error(
-          "Missing GEMINI_API_KEY (or GOOGLE_GENERATIVE_AI_API_KEY / GOOGLE_API_KEY) for google/... model",
-        );
-      const model = resolveGoogleModel({
-        modelId: parsed.model,
-        context,
-        googleBaseUrlOverride,
-      });
-      const stream = streamSimple(model, context, {
-        ...(typeof effectiveTemperature === "number" ? { temperature: effectiveTemperature } : {}),
-        ...(typeof maxOutputTokens === "number" ? { maxTokens: maxOutputTokens } : {}),
-        apiKey,
-        signal: controller.signal,
-      });
-
-      const textStream: AsyncIterable<string> = {
-        async *[Symbol.asyncIterator]() {
-          for await (const event of stream) {
-            if (event.type === "text_delta") yield event.delta;
-            if (event.type === "error") {
-              lastError = event.error;
-              break;
-            }
-          }
-        },
-      };
-      return {
-        textStream: wrapTextStream(textStream),
-        canonicalModelId: parsed.canonical,
-        provider: parsed.provider,
-        usage: streamUsageWithTimeout({ result: stream.result(), timeoutMs }),
-        lastError: () => lastError,
-      };
-    }
-
-    if (parsed.provider === "anthropic") {
-      const apiKey = apiKeys.anthropicApiKey;
-      if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY for anthropic/... model");
-      const model = resolveAnthropicModel({
-        modelId: parsed.model,
-        context,
-        anthropicBaseUrlOverride,
-      });
-      const stream = streamSimple(model, context, {
-        ...(typeof effectiveTemperature === "number" ? { temperature: effectiveTemperature } : {}),
-        ...(typeof maxOutputTokens === "number" ? { maxTokens: maxOutputTokens } : {}),
-        apiKey,
-        signal: controller.signal,
-      });
-
-      const textStream: AsyncIterable<string> = {
-        async *[Symbol.asyncIterator]() {
-          for await (const event of stream) {
-            if (event.type === "text_delta") yield event.delta;
-            if (event.type === "error") {
-              lastError =
-                normalizeAnthropicModelAccessError(event.error, parsed.model) ?? event.error;
-              break;
-            }
-          }
-        },
-      };
-      return {
-        textStream: wrapTextStream(textStream),
-        canonicalModelId: parsed.canonical,
-        provider: parsed.provider,
-        usage: streamUsageWithTimeout({ result: stream.result(), timeoutMs }),
-        lastError: () => lastError,
-      };
-    }
-
-    if (parsed.provider === "openai" || parsed.provider === "zai" || parsed.provider === "nvidia") {
-      const openaiConfig: OpenAiClientConfig = resolveOpenAiCompatibleClientConfigForProvider({
-        provider: parsed.provider,
-        openaiApiKey: apiKeys.openaiApiKey,
-        openrouterApiKey: apiKeys.openrouterApiKey,
-        forceOpenRouter,
-        openaiBaseUrlOverride,
-        forceChatCompletions,
-      });
-
-      const model = resolveOpenAiModel({ modelId: parsed.model, context, openaiConfig });
-      const stream = streamSimple(model, context, {
-        ...(typeof effectiveTemperature === "number" ? { temperature: effectiveTemperature } : {}),
-        ...(typeof maxOutputTokens === "number" ? { maxTokens: maxOutputTokens } : {}),
-        apiKey: openaiConfig.apiKey,
-        signal: controller.signal,
-      });
-
-      const textStream: AsyncIterable<string> = {
-        async *[Symbol.asyncIterator]() {
-          for await (const event of stream) {
-            if (event.type === "text_delta") yield event.delta;
-            if (event.type === "error") {
-              lastError = event.error;
-              break;
-            }
-          }
-        },
-      };
-      return {
-        textStream: wrapTextStream(textStream),
-        canonicalModelId: parsed.canonical,
-        provider: parsed.provider,
-        usage: streamUsageWithTimeout({ result: stream.result(), timeoutMs }),
-        lastError: () => lastError,
-      };
-    }
-
-    /* v8 ignore next */
-    throw new Error(`Unknown provider ${parsed.provider}`);
-  } catch (error) {
-    if (parsed.provider === "anthropic") {
-      const normalized = normalizeAnthropicModelAccessError(error, parsed.model);
-      if (normalized) throw normalized;
-    }
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("LLM request timed out");
-    }
-    throw error;
-  } finally {
-    stopTimeout();
-  }
 }
