@@ -1,6 +1,6 @@
 import type { Context } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
-import { createUnsupportedFunctionalityError } from "./errors.js";
+import { maybeGenerateDocumentText } from "./generate-text-document.js";
 import {
   computeRetryDelayMs,
   isGoogleEmptySummaryError,
@@ -13,16 +13,12 @@ import {
 import { streamTextWithContext } from "./generate-text-stream.js";
 import { parseGatewayStyleModelId } from "./model-id.js";
 import type { Prompt } from "./prompt.js";
+import { resolveOpenAiCompatibleClientConfigForProvider } from "./provider-capabilities.js";
 import {
-  resolveOpenAiCompatibleClientConfigForProvider,
-  supportsDocumentAttachments,
-} from "./provider-capabilities.js";
-import {
-  completeAnthropicDocument,
   completeAnthropicText,
   normalizeAnthropicModelAccessError,
 } from "./providers/anthropic.js";
-import { completeGoogleDocument, completeGoogleText } from "./providers/google.js";
+import { completeGoogleText } from "./providers/google.js";
 import {
   resolveAnthropicModel,
   resolveGoogleModel,
@@ -31,11 +27,7 @@ import {
   resolveXaiModel,
   resolveZaiModel,
 } from "./providers/models.js";
-import {
-  completeOpenAiDocument,
-  completeOpenAiText,
-  resolveOpenAiClientConfig,
-} from "./providers/openai.js";
+import { completeOpenAiText, resolveOpenAiClientConfig } from "./providers/openai.js";
 import { extractText } from "./providers/shared.js";
 import type { OpenAiClientConfig } from "./providers/types.js";
 import type { LlmTokenUsage } from "./types.js";
@@ -110,123 +102,41 @@ export async function generateTextWithModelId({
     temperature,
   });
 
-  const attachments = prompt.attachments ?? [];
-  const documentAttachment =
-    attachments.find((attachment) => attachment.kind === "document") ?? null;
-
-  if (documentAttachment) {
-    if (attachments.length !== 1) {
-      throw new Error("Internal error: document attachments cannot be combined with other inputs.");
-    }
-    if (!supportsDocumentAttachments(parsed.provider)) {
-      throw createUnsupportedFunctionalityError(
-        `document attachments are not supported for ${parsed.provider}/... models`,
-      );
-    }
-    if (parsed.provider === "anthropic") {
-      const apiKey = apiKeys.anthropicApiKey;
-      if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY for anthropic/... model");
-      try {
-        const result = await completeAnthropicDocument({
-          modelId: parsed.model,
-          apiKey,
-          promptText: prompt.userText,
-          document: documentAttachment,
-          system: prompt.system,
-          maxOutputTokens,
-          timeoutMs,
-          fetchImpl,
-          anthropicBaseUrlOverride,
-        });
-        return {
-          text: result.text,
-          canonicalModelId: parsed.canonical,
-          provider: parsed.provider,
-          usage: result.usage,
-        };
-      } catch (error) {
-        const normalized = normalizeAnthropicModelAccessError(error, parsed.model);
-        if (normalized) throw normalized;
-        throw error;
-      }
-    }
-
-    if (parsed.provider === "openai") {
-      const openaiConfig = resolveOpenAiCompatibleClientConfigForProvider({
-        provider: "openai",
-        openaiApiKey: apiKeys.openaiApiKey,
-        openrouterApiKey: apiKeys.openrouterApiKey,
-        forceOpenRouter,
-        openaiBaseUrlOverride,
-        forceChatCompletions,
-      });
-      const result = await completeOpenAiDocument({
-        modelId: parsed.model,
-        openaiConfig,
-        promptText: prompt.userText,
-        document: documentAttachment,
+  const documentResult = await maybeGenerateDocumentText({
+    parsed,
+    apiKeys,
+    prompt,
+    maxOutputTokens,
+    temperature: effectiveTemperature,
+    timeoutMs,
+    fetchImpl,
+    forceOpenRouter,
+    openaiBaseUrlOverride,
+    anthropicBaseUrlOverride,
+    googleBaseUrlOverride,
+    forceChatCompletions,
+    retryWithModelId: (fallbackModelId) =>
+      generateTextWithModelId({
+        modelId: fallbackModelId,
+        apiKeys,
+        prompt,
+        temperature,
         maxOutputTokens,
-        temperature: effectiveTemperature,
         timeoutMs,
         fetchImpl,
-      });
-      return {
-        text: result.text,
-        canonicalModelId: parsed.canonical,
-        provider: parsed.provider,
-        usage: result.usage,
-      };
-    }
-
-    if (parsed.provider === "google") {
-      const apiKey = apiKeys.googleApiKey;
-      if (!apiKey)
-        throw new Error(
-          "Missing GEMINI_API_KEY (or GOOGLE_GENERATIVE_AI_API_KEY / GOOGLE_API_KEY) for google/... model",
-        );
-      try {
-        const result = await completeGoogleDocument({
-          modelId: parsed.model,
-          apiKey,
-          promptText: prompt.userText,
-          document: documentAttachment,
-          maxOutputTokens,
-          temperature: effectiveTemperature,
-          timeoutMs,
-          fetchImpl,
-          googleBaseUrlOverride,
-        });
-        return {
-          text: result.text,
-          canonicalModelId: parsed.canonical,
-          provider: parsed.provider,
-          usage: result.usage,
-        };
-      } catch (error) {
-        const fallbackModelId =
-          isGoogleEmptySummaryError(error) &&
-          resolveGoogleEmptyResponseFallbackModelId(parsed.canonical);
-        if (!fallbackModelId) throw error;
-        return generateTextWithModelId({
-          modelId: fallbackModelId,
-          apiKeys,
-          prompt,
-          temperature,
-          maxOutputTokens,
-          timeoutMs,
-          fetchImpl,
-          forceOpenRouter,
-          openaiBaseUrlOverride,
-          anthropicBaseUrlOverride,
-          googleBaseUrlOverride,
-          xaiBaseUrlOverride,
-          zaiBaseUrlOverride,
-          forceChatCompletions,
-          retries,
-          onRetry,
-        });
-      }
-    }
+        forceOpenRouter,
+        openaiBaseUrlOverride,
+        anthropicBaseUrlOverride,
+        googleBaseUrlOverride,
+        xaiBaseUrlOverride,
+        zaiBaseUrlOverride,
+        forceChatCompletions,
+        retries,
+        onRetry,
+      }),
+  });
+  if (documentResult) {
+    return documentResult;
   }
 
   const context = promptToContext(prompt);
