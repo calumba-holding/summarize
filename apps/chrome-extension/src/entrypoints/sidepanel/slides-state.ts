@@ -212,6 +212,7 @@ export function deriveSlideSummaries({
 
 export function buildSlideDescriptions({
   slides,
+  slideSummaries,
   transcriptTimedText,
   lengthValue,
   slidesTextMode,
@@ -220,6 +221,7 @@ export function buildSlideDescriptions({
   slidesTranscriptAvailable,
 }: {
   slides: SlideLike[];
+  slideSummaries?: ReadonlyMap<number, string>;
   transcriptTimedText: string | null;
   lengthValue: string;
   slidesTextMode: SlideTextMode;
@@ -238,11 +240,13 @@ export function buildSlideDescriptions({
   const budget = resolveSlideTextBudget({ lengthArg, slideCount: timeline.length });
   const allowOcrFallback = slidesOcrEnabled && slidesOcrAvailable && !slidesTranscriptAvailable;
   for (const slide of slides) {
+    const summaryText = slideSummaries?.get(slide.index) ?? "";
     const transcriptText = fallbackSummaries.get(slide.index) ?? "";
     const ocrText = getOcrTextForSlide(slide, budget);
     descriptions.set(
       slide.index,
       chooseSlideDescription({
+        summaryText,
         transcriptText,
         ocrText,
         preferOcr: slidesTextMode === "ocr",

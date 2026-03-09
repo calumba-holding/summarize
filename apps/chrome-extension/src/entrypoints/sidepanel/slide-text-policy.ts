@@ -1,4 +1,5 @@
 type SlideTextChoice = {
+  summaryText: string;
   transcriptText: string;
   ocrText: string;
   preferOcr: boolean;
@@ -14,12 +15,14 @@ export function sanitizeSlideSummaryTitle(title: string): string {
 }
 
 export function chooseSlideDescription({
+  summaryText,
   transcriptText,
   ocrText,
   preferOcr,
   allowOcrFallback,
 }: SlideTextChoice): string {
   if (preferOcr) return ocrText;
+  if (summaryText) return summaryText;
   const ocrFallback = allowOcrFallback ? ocrText : "";
   if (!transcriptText && ocrFallback) return ocrFallback;
   return transcriptText;

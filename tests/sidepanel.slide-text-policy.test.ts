@@ -14,6 +14,7 @@ describe("sidepanel slide text policy", () => {
   it("prefers transcript text over summary-era filler", () => {
     expect(
       chooseSlideDescription({
+        summaryText: "",
         transcriptText: "Destiny drops out of FTL.",
         ocrText: "OCR text",
         preferOcr: false,
@@ -25,6 +26,7 @@ describe("sidepanel slide text policy", () => {
   it("returns empty when no transcript or OCR fallback exists", () => {
     expect(
       chooseSlideDescription({
+        summaryText: "",
         transcriptText: "",
         ocrText: "ignored",
         preferOcr: false,
@@ -36,6 +38,7 @@ describe("sidepanel slide text policy", () => {
   it("uses OCR only when explicitly preferred or allowed as fallback", () => {
     expect(
       chooseSlideDescription({
+        summaryText: "",
         transcriptText: "",
         ocrText: "Visible slide text",
         preferOcr: true,
@@ -45,11 +48,24 @@ describe("sidepanel slide text policy", () => {
 
     expect(
       chooseSlideDescription({
+        summaryText: "",
         transcriptText: "",
         ocrText: "Visible slide text",
         preferOcr: false,
         allowOcrFallback: true,
       }),
     ).toBe("Visible slide text");
+  });
+
+  it("prefers summary text over transcript text when available", () => {
+    expect(
+      chooseSlideDescription({
+        summaryText: "Londo realizes the room is a setup.",
+        transcriptText: "we have a drink lord refa yes thank you",
+        ocrText: "OCR text",
+        preferOcr: false,
+        allowOcrFallback: false,
+      }),
+    ).toBe("Londo realizes the room is a setup.");
   });
 });

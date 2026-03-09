@@ -342,8 +342,8 @@ function maybeStartPendingSlidesForUrl(url: string | null) {
   const effectiveInputMode = inputModeOverride ?? inputMode;
   if (effectiveInputMode !== "video") return;
   if (slidesHydrator.isStreaming()) return;
-  if (hasResolvedSlidesPayload(panelState.slides, slidesSeededSourceId)) return;
   pendingSlidesRunsByUrl.delete(key);
+  if (hasResolvedSlidesPayload(panelState.slides, slidesSeededSourceId)) return;
   startSlidesStreamForRunId(pending.runId);
   startSlidesSummaryStreamForRunId(pending.runId, pending.url);
 }
@@ -1190,6 +1190,7 @@ const uiStateRuntime = createUiStateRuntime({
   migrateChatHistory,
   maybeStartPendingSummaryRunForUrl,
   maybeStartPendingSlidesForUrl,
+  resolveActiveSlidesRunId,
   applyPanelCache,
   resetSummaryView,
   hideAutomationNotice,
@@ -1278,6 +1279,7 @@ const uiStateRuntime = createUiStateRuntime({
     summarizeVideoDurationSeconds = value;
   },
   isStreaming,
+  getSlidesBusy: () => slidesBusy,
   onSlidesOcrChanged: updateSlidesTextState,
 });
 

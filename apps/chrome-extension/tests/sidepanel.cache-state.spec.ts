@@ -18,6 +18,7 @@ import {
 import {
   applySlidesPayload,
   getPanelSlideDescriptions,
+  getPanelSlidesSummaryMarkdown,
   getPanelSlidesTimeline,
   getPanelSummaryMarkdown,
   waitForApplySlidesHook,
@@ -458,6 +459,279 @@ test("sidepanel keeps cached slides isolated while a different YouTube video res
     });
     await expect.poll(async () => await getPanelSummaryMarkdown(page)).toContain("Summary B");
     await expect.poll(async () => (await getPanelSlidesTimeline(page)).length).toBe(1);
+
+    assertNoErrors(harness);
+  } finally {
+    await closeExtension(harness.context, harness.userDataDir);
+  }
+});
+
+test("sidepanel keeps slide summaries isolated when switching YouTube videos mid-analysis", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
+
+  try {
+    await seedSettings(harness, {
+      token: "test-token",
+      autoSummarize: false,
+      slidesEnabled: true,
+      slidesParallel: true,
+      slidesOcrEnabled: true,
+      slidesLayout: "gallery",
+    });
+    const page = await openExtensionPage(harness, "sidepanel.html", "#title", () => {
+      (
+        window as typeof globalThis & { __summarizeTestHooks?: Record<string, unknown> }
+      ).__summarizeTestHooks = {};
+    });
+    await waitForPanelPort(page);
+    await waitForApplySlidesHook(page);
+    await routePlaceholderSlideImages(page);
+    const applyBgMessage = async (message: object) => {
+      await page.evaluate((payload) => {
+        const hooks = (
+          window as typeof globalThis & {
+            __summarizeTestHooks?: { applyBgMessage?: (value: object) => void };
+          }
+        ).__summarizeTestHooks;
+        hooks?.applyBgMessage?.(payload);
+      }, message);
+    };
+
+    const delay = async (ms: number) => await new Promise((resolve) => setTimeout(resolve, ms));
+    const sseBody = (text: string) =>
+      ["event: chunk", `data: ${JSON.stringify({ text })}`, "", "event: done", "data: {}", ""].join(
+        "\n",
+      );
+    const alphaSlidesMarkdown = [
+      "### Slides",
+      "Slide 1 · 0:00",
+      "Alpha briefing",
+      "Alpha summary body one polished from the scene, not raw OCR.",
+      "",
+      "Slide 2 · 0:10",
+      "Alpha fallout",
+      "Alpha summary body two explains the fallout after the poisoned drink lands.",
+    ].join("\n");
+    const bravoSlidesMarkdown = [
+      "### Slides",
+      "Slide 1 · 0:00",
+      "Bravo arrival",
+      "Bravo summary body one captures the new plan after switching videos.",
+      "",
+      "Slide 2 · 0:10",
+      "Bravo twist",
+      "Bravo summary body two explains the twist in the second scene.",
+    ].join("\n");
+
+    await page.route("http://127.0.0.1:8787/v1/summarize/**/events", async (route) => {
+      const runId =
+        route
+          .request()
+          .url()
+          .match(/summarize\/([^/]+)\/events/)?.[1] ?? "";
+      if (runId === "run-a") await delay(250);
+      if (runId === "slides-a") await delay(900);
+      if (runId === "run-b") await delay(60);
+      if (runId === "slides-b") await delay(120);
+
+      let body = sseBody("Summary");
+      if (runId === "run-a") body = sseBody("Alpha overall summary.");
+      if (runId === "run-b") body = sseBody("Bravo overall summary.");
+      if (runId === "slides-a") body = sseBody(alphaSlidesMarkdown);
+      if (runId === "slides-b") body = sseBody(bravoSlidesMarkdown);
+
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body,
+      });
+    });
+
+    const alphaUrl = "https://www.youtube.com/watch?v=alpha123";
+    const bravoUrl = "https://www.youtube.com/watch?v=bravo456";
+    const alphaPayload = {
+      sourceUrl: alphaUrl,
+      sourceId: "youtube-alpha123",
+      sourceKind: "youtube",
+      ocrAvailable: true,
+      slides: [
+        {
+          index: 1,
+          timestamp: 0,
+          imageUrl: "http://127.0.0.1:8787/v1/slides/youtube-alpha123/1?v=1",
+          ocrText: "alpha raw ocr line one that should be replaced by summary text",
+        },
+        {
+          index: 2,
+          timestamp: 10,
+          imageUrl: "http://127.0.0.1:8787/v1/slides/youtube-alpha123/2?v=1",
+          ocrText: "alpha raw ocr line two that should be replaced by summary text",
+        },
+      ],
+    };
+    const bravoPayload = {
+      sourceUrl: bravoUrl,
+      sourceId: "youtube-bravo456",
+      sourceKind: "youtube",
+      ocrAvailable: true,
+      slides: [
+        {
+          index: 1,
+          timestamp: 0,
+          imageUrl: "http://127.0.0.1:8787/v1/slides/youtube-bravo456/1?v=1",
+          ocrText: "bravo raw ocr line one that should be replaced by summary text",
+        },
+        {
+          index: 2,
+          timestamp: 10,
+          imageUrl: "http://127.0.0.1:8787/v1/slides/youtube-bravo456/2?v=1",
+          ocrText: "bravo raw ocr line two that should be replaced by summary text",
+        },
+      ],
+    };
+
+    await page.route("http://127.0.0.1:8787/v1/summarize/*/slides/events", async (route) => {
+      const runId =
+        route
+          .request()
+          .url()
+          .match(/summarize\/([^/]+)\/slides\/events/)?.[1] ?? "";
+      const payload =
+        runId === "slides-a" ? alphaPayload : runId === "slides-b" ? bravoPayload : null;
+      if (!payload) {
+        await route.fulfill({
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+          body: ["event: done", "data: {}", ""].join("\n"),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: [
+          "event: slides",
+          `data: ${JSON.stringify(payload)}`,
+          "",
+          "event: done",
+          "data: {}",
+          "",
+        ].join("\n"),
+      });
+    });
+    await page.route("http://127.0.0.1:8787/v1/summarize/*/slides", async (route) => {
+      const runId =
+        route
+          .request()
+          .url()
+          .match(/summarize\/([^/]+)\/slides(?:\\?.*)?$/)?.[1] ?? "";
+      const payload =
+        runId === "slides-a" ? alphaPayload : runId === "slides-b" ? bravoPayload : null;
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload ? { ok: true, slides: payload } : { ok: true, slides: null }),
+      });
+    });
+
+    const tabAState = buildUiState({
+      tab: { id: 1, url: alphaUrl, title: "Alpha Tab" },
+      media: { hasVideo: true, hasAudio: true, hasCaptions: true },
+      settings: {
+        autoSummarize: false,
+        slidesEnabled: true,
+        slidesParallel: true,
+        slidesOcrEnabled: true,
+        slidesLayout: "gallery",
+        tokenPresent: true,
+      },
+    });
+    const tabBState = buildUiState({
+      tab: { id: 2, url: bravoUrl, title: "Bravo Tab" },
+      media: { hasVideo: true, hasAudio: true, hasCaptions: true },
+      settings: {
+        autoSummarize: false,
+        slidesEnabled: true,
+        slidesParallel: true,
+        slidesOcrEnabled: true,
+        slidesLayout: "gallery",
+        tokenPresent: true,
+      },
+    });
+
+    await applyBgMessage({ type: "ui:state", state: tabAState });
+    await expect(page.locator("#title")).toHaveText("Alpha Tab");
+    await applyBgMessage({
+      type: "run:start",
+      run: {
+        id: "run-a",
+        url: alphaUrl,
+        title: "Alpha Tab",
+        model: "auto",
+        reason: "manual",
+      },
+    });
+    await applyBgMessage({
+      type: "slides:run",
+      ok: true,
+      runId: "slides-a",
+      url: alphaUrl,
+    });
+    await applySlidesPayload(page, alphaPayload);
+    await expect.poll(async () => (await getPanelSlidesTimeline(page)).length).toBe(2);
+
+    await applyBgMessage({ type: "ui:state", state: tabBState });
+    await expect(page.locator("#title")).toHaveText("Bravo Tab");
+    await applyBgMessage({
+      type: "run:start",
+      run: {
+        id: "run-b",
+        url: bravoUrl,
+        title: "Bravo Tab",
+        model: "auto",
+        reason: "manual",
+      },
+    });
+    await applyBgMessage({
+      type: "slides:run",
+      ok: true,
+      runId: "slides-b",
+      url: bravoUrl,
+    });
+    await applySlidesPayload(page, bravoPayload);
+
+    await expect
+      .poll(async () => await getPanelSlidesSummaryMarkdown(page), { timeout: 20_000 })
+      .toContain("Bravo summary body one captures the new plan after switching videos.");
+    await expect
+      .poll(async () => (await getPanelSlideDescriptions(page)).length, {
+        timeout: 20_000,
+      })
+      .toBe(2);
+
+    const bravoDescriptions = await getPanelSlideDescriptions(page);
+    expect(bravoDescriptions[0]?.[1] ?? "").toContain(
+      "Bravo summary body one captures the new plan after switching videos.",
+    );
+    expect(bravoDescriptions[1]?.[1] ?? "").toContain(
+      "Bravo summary body two explains the twist in the second scene.",
+    );
+    expect(bravoDescriptions.some(([, text]) => text.includes("raw ocr"))).toBe(false);
+    await expect(page.locator('.slideGallery__thumb img[data-loaded="true"]')).toHaveCount(2);
+
+    await page.waitForTimeout(1_200);
+    await expect(page.locator("#title")).toHaveText("Bravo Tab");
+    const stillBravoDescriptions = await getPanelSlideDescriptions(page);
+    expect(stillBravoDescriptions[0]?.[1] ?? "").toContain("Bravo summary body one");
+    expect(stillBravoDescriptions.some(([, text]) => text.includes("Alpha summary body"))).toBe(
+      false,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("youtube-switch-mid-analysis-bravo.png"),
+      fullPage: true,
+    });
 
     assertNoErrors(harness);
   } finally {

@@ -260,7 +260,42 @@ test.describe("youtube e2e", () => {
           .toBeGreaterThan(0);
         const slidesTimeline = await getPanelSlidesTimeline(page);
         const transcriptTimedText = await getPanelTranscriptTimedText(page);
+        await expect
+          .poll(async () => await getPanelSlidesSummaryComplete(page), { timeout: 600_000 })
+          .toBe(true);
+        await expect
+          .poll(async () => (await getPanelSlidesSummaryMarkdown(page)).trim().length, {
+            timeout: 600_000,
+          })
+          .toBeGreaterThan(0);
+        const loadedSlideImages = page.locator(
+          ".slideGallery__thumb img[data-loaded='true'], .slideStrip__thumb img[data-loaded='true'], .slideInline__thumb img[data-loaded='true']",
+        );
+        await expect
+          .poll(async () => await loadedSlideImages.count(), { timeout: 600_000 })
+          .toBeGreaterThan(0);
+        const firstLoadedImage = await loadedSlideImages.first().evaluate((node) => {
+          const img = node as HTMLImageElement;
+          return {
+            loaded: img.dataset.loaded ?? "",
+            complete: img.complete,
+            naturalWidth: img.naturalWidth,
+            naturalHeight: img.naturalHeight,
+            currentSrc: img.currentSrc,
+          };
+        });
+        expect(firstLoadedImage.loaded).toBe("true");
+        expect(firstLoadedImage.complete).toBe(true);
+        expect(firstLoadedImage.naturalWidth).toBeGreaterThan(1);
+        expect(firstLoadedImage.naturalHeight).toBeGreaterThan(1);
+        expect(firstLoadedImage.currentSrc.length).toBeGreaterThan(0);
+        const videoId = new URL(url).searchParams.get("v") ?? "youtube";
+        await page.screenshot({
+          path: testInfo.outputPath(`youtube-slides-${videoId}.png`),
+          fullPage: true,
+        });
         const slidesModel = (await getPanelSlidesSummaryModel(page))?.trim() || model;
+        const slidesSummaryMarkdown = await getPanelSlidesSummaryMarkdown(page);
         const cliSummary = runCliSummary(url, [
           "--slides",
           "--slides-ocr",
@@ -284,21 +319,29 @@ test.describe("youtube e2e", () => {
           transcriptTimedText: transcriptTimedText ?? null,
           lengthArg,
         });
+        const expectedSlidesFromPanelSummary = parseSlidesFromSummary(
+          coerceSummaryWithSlides({
+            markdown: slidesSummaryMarkdown,
+            slides: slidesTimeline,
+            transcriptTimedText: transcriptTimedText ?? null,
+            lengthArg,
+          }),
+        );
         if (process.env.SUMMARIZE_DEBUG_SLIDES === "1") {
           const panelSummary = await getPanelSummaryMarkdown(page);
-          const slidesSummary = await getPanelSlidesSummaryMarkdown(page);
           const slidesSummaryComplete = await getPanelSlidesSummaryComplete(page);
           const slidesSummaryModel = await getPanelSlidesSummaryModel(page);
           console.log("[slides-debug]", {
             url,
             panelSummaryLength: panelSummary.length,
-            slidesSummaryLength: slidesSummary.length,
+            slidesSummaryLength: slidesSummaryMarkdown.length,
             slidesSummaryComplete,
             slidesSummaryModel,
           });
         }
         const expectedSlides = parseSlidesFromSummary(coercedSummary);
         expect(expectedSlides.length).toBeGreaterThan(0);
+        expect(expectedSlidesFromPanelSummary.length).toBeGreaterThan(0);
 
         await expect
           .poll(async () => (await getPanelSlideDescriptions(page)).length, { timeout: 600_000 })
@@ -314,6 +357,8 @@ test.describe("youtube e2e", () => {
         const panelIndexes = panelSlides.map((entry) => entry.index);
         const expectedIndexes = expectedSlides.map((entry) => entry.index);
         expect(panelIndexes).toEqual(expectedIndexes);
+        const panelSummaryIndexes = expectedSlidesFromPanelSummary.map((entry) => entry.index);
+        expect(panelIndexes).toEqual(panelSummaryIndexes);
 
         for (let i = 0; i < expectedSlides.length; i += 1) {
           const expected = expectedSlides[i];
@@ -322,6 +367,16 @@ test.describe("youtube e2e", () => {
           if (!expected.text) continue;
           expect(actual.text.length).toBeGreaterThan(0);
           expect(overlapRatio(actual.text, expected.text)).toBeGreaterThanOrEqual(0.15);
+        }
+        for (let i = 0; i < expectedSlidesFromPanelSummary.length; i += 1) {
+          const expected = expectedSlidesFromPanelSummary[i];
+          const actual = panelSlides[i];
+          if (!expected || !actual) continue;
+          if (!expected.text) continue;
+          expect(actual.text.length).toBeGreaterThan(0);
+          expect(
+            overlapRatio(actual.text, normalizeWhitespace(expected.text)),
+          ).toBeGreaterThanOrEqual(0.4);
         }
       }
 

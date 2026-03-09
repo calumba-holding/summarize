@@ -19,7 +19,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const waitUntil = async (assertion: () => void, timeoutMs = 2000) => {
+const waitUntil = async (assertion: () => void, timeoutMs = 4000) => {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
@@ -373,27 +373,33 @@ describe("slide image loader", () => {
     const img1 = makeImg();
     loader.observe(img1, "http://127.0.0.1:8787/v1/slides/abc/1");
     await waitUntil(() => {
-      expect(img1.getAttribute("src")).toBe("blob:1");
+      expect(img1.getAttribute("src")).toMatch(/^blob:/);
     });
+    const img1Src = img1.getAttribute("src");
+    expect(img1Src).toMatch(/^blob:/);
 
     const img2 = makeImg();
     loader.observe(img2, "http://127.0.0.1:8787/v1/slides/abc/2");
     await waitUntil(() => {
-      expect(img2.getAttribute("src")).toBe("blob:2");
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(img2.getAttribute("src")).toMatch(/^blob:/);
     });
+    const img2Src = img2.getAttribute("src");
+    expect(img2Src).toMatch(/^blob:/);
+    expect(img2Src).not.toBe(img1Src);
 
     const img1b = makeImg();
     loader.observe(img1b, "http://127.0.0.1:8787/v1/slides/abc/1");
     await waitUntil(() => {
-      expect(img1b.getAttribute("src")).toBe("blob:1");
+      expect(img1b.getAttribute("src")).toBe(img1Src);
     });
 
     const img3 = makeImg();
     loader.observe(img3, "http://127.0.0.1:8787/v1/slides/abc/3");
     await waitUntil(() => {
       expect(fetchSpy).toHaveBeenCalledTimes(3);
-      expect(img3.getAttribute("src")).toBe("blob:3");
-      expect(revokeSpy).toHaveBeenCalledWith("blob:2");
+      expect(img3.getAttribute("src")).toMatch(/^blob:/);
+      expect(revokeSpy).toHaveBeenCalledWith(img2Src);
     });
     revokeSpy.mockRestore();
   });

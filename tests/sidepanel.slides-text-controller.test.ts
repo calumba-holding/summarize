@@ -47,6 +47,91 @@ describe("sidepanel slides text controller", () => {
     expect(controller.getTitles().get(1)).toBe("Canonical title");
   });
 
+  it("upgrades transcript-first descriptions to slide summaries when summary markdown arrives", () => {
+    const slides = [
+      { index: 1, timestamp: 0, imageUrl: "x", ocrText: "Ignored OCR text" },
+      { index: 2, timestamp: 30, imageUrl: "y", ocrText: "Fallback OCR text for second slide" },
+    ];
+    const controller = createSlidesTextController({
+      getSlides: () => slides,
+      getLengthValue: () => "short",
+      getSlidesOcrEnabled: () => true,
+    });
+
+    controller.setTranscriptTimedText(
+      "[00:00] Raw transcript intro line.\n[00:30] Raw transcript second line.",
+    );
+    controller.syncTextState();
+    expect(controller.getDescriptions().get(1)).toContain("Raw transcript intro line");
+
+    controller.updateSummaryFromMarkdown(
+      [
+        "### Slides",
+        "Slide 1 · 0:00",
+        "Opening move",
+        "Londo notices the trap and keeps the conversation moving.",
+        "",
+        "Slide 2 · 0:30",
+        "Poison reveal",
+        "Refa learns the drink is only lethal once both parts are combined.",
+      ].join("\n"),
+      { source: "slides" },
+    );
+
+    expect(controller.getTitles().get(1)).toBe("Opening move");
+    expect(controller.getDescriptions().get(1)).toContain(
+      "Londo notices the trap and keeps the conversation moving.",
+    );
+    expect(controller.getDescriptions().get(2)).toContain(
+      "Refa learns the drink is only lethal once both parts are combined.",
+    );
+  });
+
+  it("keeps explicit OCR mode authoritative even after slide summaries arrive", () => {
+    const slides = [
+      {
+        index: 1,
+        timestamp: 0,
+        imageUrl: "x",
+        ocrText:
+          "Readable OCR body for slide one with enough detail to keep the OCR toggle meaningful.",
+      },
+      {
+        index: 2,
+        timestamp: 30,
+        imageUrl: "y",
+        ocrText:
+          "Readable OCR body for slide two with enough detail to keep the OCR toggle meaningful.",
+      },
+      {
+        index: 3,
+        timestamp: 60,
+        imageUrl: "z",
+        ocrText:
+          "Readable OCR body for slide three with enough detail to keep the OCR toggle meaningful.",
+      },
+    ];
+    const controller = createSlidesTextController({
+      getSlides: () => slides,
+      getLengthValue: () => "short",
+      getSlidesOcrEnabled: () => true,
+    });
+
+    controller.syncTextState();
+    expect(controller.setTextMode("ocr")).toBe(true);
+    controller.updateSummaryFromMarkdown(
+      [
+        "### Slides",
+        "Slide 1 · 0:00",
+        "Summary title",
+        "Summary body that should not replace OCR mode.",
+      ].join("\n"),
+      { source: "slides" },
+    );
+
+    expect(controller.getDescriptions().get(1)).toContain("Readable OCR body for slide one");
+  });
+
   it("preserves existing titles when asked to ignore empty updates", () => {
     const controller = createSlidesTextController({
       getSlides: () => [{ index: 1, timestamp: 2, imageUrl: "x", ocrText: null }],

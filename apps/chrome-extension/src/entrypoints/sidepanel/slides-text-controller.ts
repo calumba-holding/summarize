@@ -20,6 +20,7 @@ export function createSlidesTextController(options: {
   let slidesTranscriptAvailable = false;
   let slidesOcrAvailable = false;
   let slideDescriptions = new Map<number, string>();
+  let slideSummaryByIndex = new Map<number, string>();
   let slideTitleByIndex = new Map<number, string>();
   let slideSummarySource: SlideSummarySource = null;
 
@@ -31,6 +32,7 @@ export function createSlidesTextController(options: {
     if (slides.length === 0) return;
     slideDescriptions = buildSlideDescriptions({
       slides,
+      slideSummaries: slideSummaryByIndex,
       transcriptTimedText: slidesTranscriptTimedText,
       lengthValue: options.getLengthValue(),
       slidesTextMode,
@@ -48,6 +50,7 @@ export function createSlidesTextController(options: {
       slidesTranscriptAvailable = false;
       slidesOcrAvailable = false;
       slideDescriptions = new Map();
+      slideSummaryByIndex = new Map();
       slideTitleByIndex = new Map();
       slideSummarySource = null;
     },
@@ -92,16 +95,20 @@ export function createSlidesTextController(options: {
       });
       if (!derived) {
         if (opts?.preserveIfEmpty) return false;
+        slideSummaryByIndex = new Map();
         slideTitleByIndex = new Map();
         if (source === "slides") {
           slideSummarySource = null;
         } else if (!slideSummarySource) {
           slideSummarySource = "summary";
         }
+        rebuildDescriptions();
         return true;
       }
+      slideSummaryByIndex = derived.summaries;
       slideTitleByIndex = derived.titles;
       slideSummarySource = source;
+      rebuildDescriptions();
       return true;
     },
     getTextMode: () => slidesTextMode,
@@ -111,6 +118,7 @@ export function createSlidesTextController(options: {
     getOcrAvailable: () => slidesOcrAvailable,
     getDescriptions: () => slideDescriptions,
     getDescriptionEntries: () => Array.from(slideDescriptions.entries()),
+    getSummaryEntries: () => Array.from(slideSummaryByIndex.entries()),
     getTitles: () => slideTitleByIndex,
     hasSummaryTitles: () => slideTitleByIndex.size > 0,
   };

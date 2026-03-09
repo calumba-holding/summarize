@@ -30,7 +30,11 @@ test("sidepanel video selection forces transcript mode", async ({
 
   try {
     await mockDaemonSummarize(harness);
-    await seedSettings(harness, { token: "test-token", autoSummarize: false });
+    await seedSettings(harness, {
+      token: "test-token",
+      autoSummarize: false,
+      slidesEnabled: false,
+    });
     const contentPage = await harness.context.newPage();
     await contentPage.route("https://www.youtube.com/**", async (route) => {
       await route.fulfill({
@@ -57,7 +61,7 @@ test("sidepanel video selection forces transcript mode", async ({
       tab: { id: 1, url: "https://www.youtube.com/watch?v=abc123", title: "Example" },
       media: { hasVideo: true, hasAudio: false, hasCaptions: false },
       stats: { pageWords: 120, videoDurationSeconds: 90 },
-      settings: { slidesEnabled: true },
+      settings: { slidesEnabled: false },
       status: "",
     });
     await expect

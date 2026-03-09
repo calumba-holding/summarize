@@ -53,6 +53,7 @@ type UiStateRuntimeOpts = {
   migrateChatHistory: (fromTabId: number | null, toTabId: number | null) => void | Promise<void>;
   maybeStartPendingSummaryRunForUrl: (url: string | null) => boolean;
   maybeStartPendingSlidesForUrl: (url: string | null) => void;
+  resolveActiveSlidesRunId: () => string | null;
   applyPanelCache: (payload: PanelCachePayload, opts?: { preserveChat?: boolean }) => void;
   resetSummaryView: (opts?: { preserveChat?: boolean }) => void;
   hideAutomationNotice: () => void;
@@ -105,6 +106,7 @@ type UiStateRuntimeOpts = {
   setSummarizePageWords: (value: number | null) => void;
   setSummarizeVideoDurationSeconds: (value: number | null) => void;
   isStreaming: () => boolean;
+  getSlidesBusy: () => boolean;
   onSlidesOcrChanged: () => void;
 };
 
