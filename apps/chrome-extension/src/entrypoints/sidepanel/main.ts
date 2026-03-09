@@ -5,7 +5,6 @@ import { splitSummaryFromSlides } from "../../../../../src/run/flows/url/slides-
 import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
 import { listSkills } from "../../automation/skills-store";
 import { executeToolCall, getAutomationToolNames } from "../../automation/tools";
-import { buildIdleSubtitle } from "../../lib/header";
 import type { BgToPanel, PanelToBg } from "../../lib/panel-contracts";
 import {
   defaultSettings,
@@ -30,13 +29,12 @@ import { createChatQueueRuntime } from "./chat-queue-runtime";
 import { createChatSession } from "./chat-session";
 import { type ChatHistoryLimits } from "./chat-state";
 import { createChatStreamRuntime } from "./chat-stream-runtime";
+import { createChatUiRuntime } from "./chat-ui-runtime";
 import { createSidepanelDom } from "./dom";
-import { createDrawerControls } from "./drawer-controls";
 import { createErrorController } from "./error-controller";
 import { createHeaderController } from "./header-controller";
 import { createSidepanelInteractionRuntime } from "./interaction-runtime";
 import { createMetricsController } from "./metrics-controller";
-import { createModelPresetsController } from "./model-presets";
 import { createNavigationRuntime } from "./navigation-runtime";
 import { createPanelCacheController, type PanelCachePayload } from "./panel-cache";
 import { createPanelPortRuntime } from "./panel-port";
@@ -46,17 +44,16 @@ import {
   shouldAcceptRunForCurrentPage,
   shouldAcceptSlidesForCurrentPage,
 } from "./session-policy";
-import { createSetupRuntime, friendlyFetchError } from "./setup-runtime";
-import { createSlidesHydrator } from "./slides-hydrator";
+import { createSetupControlsRuntime } from "./setup-controls-runtime";
+import { friendlyFetchError } from "./setup-runtime";
 import { hasResolvedSlidesPayload } from "./slides-pending";
-import { createSlidesRunRuntime } from "./slides-run-runtime";
+import { createSidepanelSlidesRuntime } from "./slides-runtime";
 import { shouldSeedPlannedSlidesForRun } from "./slides-seed-policy";
 import { selectMarkdownForLayout, splitSlidesMarkdown, type SlideTextMode } from "./slides-state";
-import { createSlidesSummaryController } from "./slides-summary-controller";
 import { createSlidesTextController } from "./slides-text-controller";
 import { createSlidesViewRuntime } from "./slides-view-runtime";
-import { createStreamController } from "./stream-controller";
 import { createSummarizeControlRuntime } from "./summarize-control-runtime";
+import { createSummaryStreamRuntime } from "./summary-stream-runtime";
 import { createSummaryViewRuntime } from "./summary-view-runtime";
 import { registerSidepanelTestHooks } from "./test-hooks";
 import { parseTimestampHref } from "./timestamp-links";
@@ -215,13 +212,11 @@ const chatLimits: ChatHistoryLimits = {
 let activeTabId: number | null = null;
 let activeTabUrl: string | null = null;
 let lastPanelOpen = false;
-let lastStreamError: string | null = null;
 let lastAction: "summarize" | "chat" | null = null;
 let lastNavigationMessageUrl: string | null = null;
 let inputMode: "page" | "video" = "page";
 let inputModeOverride: "page" | "video" | null = null;
 let mediaAvailable = false;
-let preserveChatOnNextReset = false;
 let automationNoticeSticky = false;
 let summarizeVideoLabel = "Video";
 let summarizePageWords: number | null = null;
@@ -368,7 +363,7 @@ function attachSummaryRun(run: RunStart) {
     void clearChatHistoryForActiveTab();
     resetChatState();
   } else {
-    preserveChatOnNextReset = true;
+    summaryStreamRuntime.setPreserveChatOnNextReset(true);
   }
   metricsController.setActiveMode("summary");
   panelState.runId = run.id;
@@ -633,42 +628,6 @@ chrome.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
   }
 });
 
-let autoScrollLocked = true;
-
-const isNearBottom = () => {
-  const distance = mainEl.scrollHeight - mainEl.scrollTop - mainEl.clientHeight;
-  return distance < 32;
-};
-
-const updateAutoScrollLock = () => {
-  autoScrollLocked = isNearBottom();
-  chatJumpBtn.classList.toggle("isVisible", !autoScrollLocked);
-};
-
-const scrollToBottom = (force = false) => {
-  if (force) autoScrollLocked = true;
-  if (!force && !autoScrollLocked) return;
-  mainEl.scrollTop = mainEl.scrollHeight;
-  chatJumpBtn.classList.remove("isVisible");
-};
-
-mainEl.addEventListener("scroll", updateAutoScrollLock, { passive: true });
-updateAutoScrollLock();
-
-chatJumpBtn.addEventListener("click", () => {
-  scrollToBottom(true);
-  chatInputEl.focus();
-});
-
-const updateChatDockHeight = () => {
-  const height = chatDockEl.getBoundingClientRect().height;
-  document.documentElement.style.setProperty("--chat-dock-height", `${height}px`);
-};
-
-updateChatDockHeight();
-const chatDockObserver = new ResizeObserver(() => updateChatDockHeight());
-chatDockObserver.observe(chatDockEl);
-
 const navigationRuntime = createNavigationRuntime({
   getCurrentSource: () => panelState.currentSource,
   setCurrentSource: (source) => {
@@ -836,6 +795,7 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 let slidesViewRuntime: ReturnType<typeof createSlidesViewRuntime> | null = null;
+let chatUiRuntime: ReturnType<typeof createChatUiRuntime> | null = null;
 
 function renderEmptySummaryState() {
   slidesViewRuntime?.renderEmptySummaryState();
@@ -1017,6 +977,30 @@ function renderInlineSlides(container: HTMLElement, opts?: { fallback?: boolean 
   slidesViewRuntime.renderInlineSlides(container, opts);
 }
 
+function applyChatEnabled() {
+  chatUiRuntime?.applyChatEnabled();
+}
+
+async function clearChatHistoryForActiveTab() {
+  await chatUiRuntime?.clearChatHistoryForActiveTab();
+}
+
+async function persistChatHistory() {
+  await chatUiRuntime?.persistChatHistory();
+}
+
+function resetChatState() {
+  chatUiRuntime?.resetChatState();
+}
+
+async function restoreChatHistory() {
+  await chatUiRuntime?.restoreChatHistory();
+}
+
+function scrollToBottom(force = false) {
+  chatUiRuntime?.scrollToBottom(force);
+}
+
 const LINE_HEIGHT_STEP = 0.1;
 
 const appearanceControls = createAppearanceControls({
@@ -1038,260 +1022,161 @@ const appearanceControls = createAppearanceControls({
   },
 });
 
-function applyChatEnabled() {
-  chatContainerEl.toggleAttribute("hidden", !chatEnabledValue);
-  chatDockEl.toggleAttribute("hidden", !chatEnabledValue);
-  if (!chatEnabledValue) {
-    chatJumpBtn.classList.remove("isVisible");
-  }
-  if (!chatEnabledValue) {
+chatUiRuntime = createChatUiRuntime({
+  mainEl,
+  chatJumpBtn,
+  chatInputEl,
+  chatDockEl,
+  chatContainerEl,
+  chatDockContainerEl: chatDockEl,
+  renderEl,
+  getChatEnabled: () => chatEnabledValue,
+  getActiveTabId: () => activeTabId,
+  getSummaryMarkdown: () => panelState.summaryMarkdown,
+  clearMetrics: () => {
     metricsController.clearForMode("chat");
-    resetChatState();
+  },
+  clearQueuedMessages: () => {
     chatQueueRuntime.clearQueuedMessages();
-  } else {
-    renderEl.classList.remove("hidden");
-  }
-}
-
-async function clearChatHistoryForTab(tabId: number | null) {
-  await chatHistoryRuntime.clear(tabId);
-}
-
-async function clearChatHistoryForActiveTab() {
-  await clearChatHistoryForTab(activeTabId);
-}
-
-async function loadChatHistory(tabId: number): Promise<ChatMessage[] | null> {
-  return chatHistoryRuntime.load(tabId);
-}
-
-async function persistChatHistory() {
-  await chatHistoryRuntime.persist(activeTabId, chatEnabledValue);
-}
-
-async function restoreChatHistory() {
-  await chatHistoryRuntime.restore(activeTabId, panelState.summaryMarkdown);
-}
-
-const modelPresetsController = createModelPresetsController({
-  modelPresetEl,
-  modelCustomEl,
-  modelRefreshBtn,
-  modelStatusEl,
-  modelRowEl,
-  defaultModel: defaultSettings.model,
-  loadSettings,
-  friendlyFetchError,
+  },
+  clearHistory: (tabId) => chatHistoryRuntime.clear(tabId),
+  loadHistory: (tabId) => chatHistoryRuntime.load(tabId),
+  persistHistory: (tabId, chatEnabled) => chatHistoryRuntime.persist(tabId, chatEnabled),
+  restoreHistory: (tabId, summaryMarkdown) => chatHistoryRuntime.restore(tabId, summaryMarkdown),
+  resetChatController: () => {
+    panelState.chatStreaming = false;
+    chatController.reset();
+  },
+  resetChatSession: () => {
+    chatSession.reset();
+  },
+  clearLastNavigationMessage: () => {
+    lastNavigationMessageUrl = null;
+  },
 });
-const setModelStatus = modelPresetsController.setStatus;
-const setDefaultModelPresets = modelPresetsController.setDefaultPresets;
-const setModelPlaceholderFromDiscovery = modelPresetsController.setPlaceholderFromDiscovery;
-const readCurrentModelValue = modelPresetsController.readCurrentValue;
-const updateModelRowUI = modelPresetsController.updateRowUI;
-const setModelValue = modelPresetsController.setValue;
-const refreshModelPresets = modelPresetsController.refreshPresets;
-const refreshModelsIfStale = modelPresetsController.refreshIfStale;
-const runRefreshFree = modelPresetsController.runRefreshFree;
-const isRefreshFreeRunning = modelPresetsController.isRefreshFreeRunning;
-const drawerControls = createDrawerControls({
+
+const setupControlsRuntime = createSetupControlsRuntime({
+  advancedSettingsBodyEl,
+  advancedSettingsEl,
+  defaultModel: defaultSettings.model,
   drawerEl,
   drawerToggleBtn,
-  advancedSettingsEl,
-  advancedSettingsBodyEl,
-  refreshModelsIfStale,
-});
-
-const slidesSummaryController = createSlidesSummaryController({
-  getToken: async () => (await loadSettings()).token,
   friendlyFetchError,
-  panelUrlsMatch,
-  getPanelState: () => panelState,
-  getUiState: () => panelState.ui,
-  getActiveTabUrl: () => activeTabUrl,
-  getInputMode: () => inputMode,
-  getInputModeOverride: () => inputModeOverride,
-  getSlidesEnabled: () => slidesEnabledValue,
-  getLengthValue: () => appearanceControls.getLengthValue(),
-  getTranscriptTimedText: () => slidesTextController.getTranscriptTimedText(),
+  generateToken,
+  getStatusResetText: () => panelState.ui?.status ?? "",
+  headerSetStatus: (text) => {
+    headerController.setStatus(text);
+  },
+  loadSettings,
+  modelCustomEl,
+  modelPresetEl,
+  modelRefreshBtn,
+  modelRowEl,
+  modelStatusEl,
+  patchSettings,
+  setupEl,
+});
+const {
+  drawerControls,
+  isRefreshFreeRunning,
+  maybeShowSetup,
+  readCurrentModelValue,
+  refreshModelsIfStale,
+  runRefreshFree,
+  setDefaultModelPresets,
+  setModelPlaceholderFromDiscovery,
+  setModelValue,
+  updateModelRowUI,
+} = setupControlsRuntime;
+
+const slidesRuntime = createSidepanelSlidesRuntime({
+  applySlidesPayload,
   clearSummarySource: () => {
     slidesTextController.clearSummarySource();
   },
-  updateSlideSummaryFromMarkdown,
-  renderMarkdown,
+  friendlyFetchError,
+  getActiveTabUrl: () => activeTabUrl,
+  getInputMode: () => inputMode,
+  getInputModeOverride: () => inputModeOverride,
+  getLengthValue: () => appearanceControls.getLengthValue(),
+  getPanelPhase: () => panelState.phase,
+  getPanelState: () => panelState,
+  getSlidesEnabled: () => slidesEnabledValue,
+  getToken: async () => (await loadSettings()).token,
+  getTranscriptTimedText: () => slidesTextController.getTranscriptTimedText(),
+  getUiState: () => panelState.ui,
+  headerSetStatus: (text) => {
+    headerController.setStatus(text);
+  },
+  hideSlideNotice,
+  isStreaming,
+  panelUrlsMatch,
+  refreshSummarizeControl,
   renderInlineSlidesFallback: () => {
     renderInlineSlides(renderMarkdownHostEl, { fallback: true });
   },
-});
-
-function applySlidesSummaryMarkdown(markdown: string) {
-  slidesSummaryController.applyMarkdown(markdown);
-}
-
-function maybeApplyPendingSlidesSummary() {
-  slidesSummaryController.maybeApplyPending();
-}
-
-slidesHydrator = createSlidesHydrator({
-  getToken: async () => (await loadSettings()).token,
-  onSlides: (data) => {
-    applySlidesPayload(data);
-  },
-  onStatus: (text) => {
-    handleSlidesStatus(text);
-  },
-  onError: (err) => {
-    const message = friendlyFetchError(err, "Slides stream failed");
-    showSlideNotice(message, { allowRetry: true });
-    setSlidesBusy(false);
-    if (!isStreaming()) {
-      headerController.setStatus("");
-    }
-    void slidesHydrator.hydrateSnapshot("timeout");
-    return message;
-  },
-  onSnapshotError: (err) => {
-    const message = err instanceof Error ? err.message : String(err);
-    console.debug("[summarize] slides snapshot failed", message);
-  },
-  onDone: () => {
-    setSlidesBusy(false);
-    if (panelState.phase === "idle") {
-      headerController.setStatus("");
-    }
-  },
-});
-
-const slidesRunRuntime = createSlidesRunRuntime({
-  getPanelPhase: () => panelState.phase,
-  getPanelState: () => panelState,
-  getUiState: () => panelState.ui,
-  getActiveTabUrl: () => activeTabUrl,
-  getInputMode: () => inputMode,
-  setInputMode: (value) => {
-    inputMode = value;
-  },
-  getInputModeOverride: () => inputModeOverride,
-  setInputModeOverride: (value) => {
-    inputModeOverride = value;
-  },
-  getSlidesEnabled: () => slidesEnabledValue,
-  refreshSummarizeControl,
-  stopSlidesStream,
-  stopSlidesSummaryStream,
-  hideSlideNotice,
-  setSlidesBusy,
+  renderMarkdown,
   schedulePanelCacheSync: () => {
     panelCacheController.scheduleSync();
   },
-  startSlidesHydrator: (runId) => {
-    void slidesHydrator.start(runId);
+  setInputMode: (value) => {
+    inputMode = value;
   },
-  startSlidesSummaryController: (payload) => {
-    void slidesSummaryController.start(payload);
+  setInputModeOverride: (value) => {
+    inputModeOverride = value;
   },
-  getSlidesSummaryRunId: () => slidesSummaryController.getRunId(),
-  setSlidesSummaryRunId: (value) => {
-    slidesSummaryController.setRunId(value);
-  },
-  setSlidesSummaryUrl: (value) => {
-    slidesSummaryController.setUrl(value);
-  },
-  resetSlidesSummaryState: () => {
-    slidesSummaryController.resetSummaryState();
-  },
-  setSlidesSummaryModel: (value) => {
-    slidesSummaryController.setModel(value);
-  },
+  setSlidesBusy,
   setSlidesRunId: (value) => {
     panelState.slidesRunId = value;
+  },
+  showSlideNotice,
+  stopSlidesStream,
+  stopSlidesSummaryStream,
+  updateSlideSummaryFromMarkdown,
+});
+const {
+  applySlidesSummaryMarkdown,
+  handleSlidesStatus,
+  maybeApplyPendingSlidesSummary,
+  slidesHydrator: activeSlidesHydrator,
+  slidesSummaryController,
+  startSlidesStream,
+  startSlidesStreamForRunId,
+  startSlidesSummaryStreamForRunId,
+} = slidesRuntime;
+slidesHydrator = activeSlidesHydrator;
+
+const summaryStreamRuntime = createSummaryStreamRuntime({
+  friendlyFetchError,
+  getFallbackModel: () => panelState.ui?.settings.model ?? null,
+  getToken: async () => (await loadSettings()).token,
+  handleSlides: (data) => {
+    slidesHydrator.handlePayload(data);
+  },
+  handleSummaryFromCache: (value) => {
+    slidesHydrator.handleSummaryFromCache(value);
+  },
+  headerArmProgress: () => {
+    headerController.armProgress();
+  },
+  headerSetBaseSubtitle: (text) => {
+    headerController.setBaseSubtitle(text);
+  },
+  headerSetBaseTitle: (text) => {
+    headerController.setBaseTitle(text);
   },
   headerSetStatus: (text) => {
     headerController.setStatus(text);
   },
-});
-const {
-  handleSlidesStatus,
-  startSlidesStreamForRunId,
-  startSlidesStream,
-  startSlidesSummaryStreamForRunId,
-} = slidesRunRuntime;
-
-const streamController = createStreamController({
-  getToken: async () => (await loadSettings()).token,
-  onReset: () => {
-    const preserveChat = preserveChatOnNextReset;
-    preserveChatOnNextReset = false;
-    resetSummaryView({ preserveChat, clearRunId: false, stopSlides: false });
-    {
-      const fallbackModel = panelState.ui?.settings.model ?? null;
-      panelState.lastMeta = {
-        inputSummary: null,
-        model: fallbackModel,
-        modelLabel: fallbackModel,
-      };
-    }
-    lastStreamError = null;
-    if (pendingRunForPlannedSlides) {
-      seedPlannedSlidesForRun(pendingRunForPlannedSlides);
-      pendingRunForPlannedSlides = null;
-    }
+  headerStopProgress: () => {
+    headerController.stopProgress();
   },
-  onStatus: (text) => {
-    headerController.setStatus(text);
-    const trimmed = text.trim();
-    const isSlideStatus = /^slides?/i.test(trimmed);
-    if (isSlideStatus) setSlidesBusy(true);
-  },
-  onBaseTitle: (text) => headerController.setBaseTitle(text),
-  onBaseSubtitle: (text) => headerController.setBaseSubtitle(text),
-  onPhaseChange: (phase) => {
-    if (phase === "error") {
-      setPhase("error", { error: lastStreamError ?? panelState.error });
-    } else {
-      setPhase(phase);
-    }
-    if (phase === "idle") {
-      maybeApplyPendingSlidesSummary();
-      if (panelState.slides && !slidesTextController.hasSummaryTitles()) {
-        rebuildSlideDescriptions();
-        queueSlidesRender();
-      }
-    }
-  },
-  onRememberUrl: (url) => void send({ type: "panel:rememberUrl", url }),
-  onMeta: (data) => {
-    panelState.lastMeta = {
-      model: typeof data.model === "string" ? data.model : panelState.lastMeta.model,
-      modelLabel:
-        typeof data.modelLabel === "string" ? data.modelLabel : panelState.lastMeta.modelLabel,
-      inputSummary:
-        typeof data.inputSummary === "string"
-          ? data.inputSummary
-          : panelState.lastMeta.inputSummary,
-    };
-    headerController.setBaseSubtitle(
-      buildIdleSubtitle({
-        inputSummary: panelState.lastMeta.inputSummary,
-        modelLabel: panelState.lastMeta.modelLabel,
-        model: panelState.lastMeta.model,
-      }),
-    );
-    panelCacheController.scheduleSync();
-  },
-  onSlides: (data) => {
-    slidesHydrator.handlePayload(data);
-  },
-  onSummaryFromCache: (value) => {
-    panelState.summaryFromCache = value;
-    slidesHydrator.handleSummaryFromCache(value);
-    panelCacheController.scheduleSync();
-    if (value === true) {
-      headerController.stopProgress();
-    } else if (value === false && isStreaming()) {
-      headerController.armProgress();
-    }
-  },
-  onMetrics: (summary) => {
+  isStreaming,
+  maybeApplyPendingSlidesSummary,
+  panelState,
+  queueSlidesRender,
+  rebuildSlideDescriptions,
+  refreshSummaryMetrics: (summary) => {
     metricsController.setForMode(
       "summary",
       summary,
@@ -1300,32 +1185,27 @@ const streamController = createStreamController({
     );
     metricsController.setActiveMode("summary");
   },
-  onRender: renderMarkdown,
-  onSyncWithActiveTab: syncWithActiveTab,
-  onError: (err) => {
-    const message = friendlyFetchError(err, "Stream failed");
-    lastStreamError = message;
-    return message;
+  rememberUrl: (url) => {
+    void send({ type: "panel:rememberUrl", url });
   },
+  renderMarkdown,
+  resetSummaryView,
+  schedulePanelCacheSync: () => {
+    panelCacheController.scheduleSync();
+  },
+  seedPlannedSlidesForPendingRun: () => {
+    if (pendingRunForPlannedSlides) {
+      seedPlannedSlidesForRun(pendingRunForPlannedSlides);
+      pendingRunForPlannedSlides = null;
+    }
+  },
+  setSlidesBusy,
+  setPhase,
+  shouldRebuildSlideDescriptions: () => !slidesTextController.hasSummaryTitles(),
+  syncWithActiveTab,
 });
+const { streamController } = summaryStreamRuntime;
 
-async function ensureToken(): Promise<string> {
-  const settings = await loadSettings();
-  if (settings.token.trim()) return settings.token.trim();
-  const token = generateToken();
-  await patchSettings({ token });
-  return token;
-}
-const setupRuntime = createSetupRuntime({
-  setupEl,
-  loadToken: async () => (await loadSettings()).token.trim(),
-  ensureToken,
-  patchSettings,
-  generateToken,
-  headerSetStatus: (text) => headerController.setStatus(text),
-  getStatusResetText: () => panelState.ui?.status ?? "",
-});
-const { maybeShowSetup } = setupRuntime;
 const uiStateRuntime = createUiStateRuntime({
   panelState,
   chatController,
@@ -1686,15 +1566,6 @@ function seedPlannedSlidesForRun(run: RunStart) {
   void requestSlidesContext();
   queueSlidesRender();
   return true;
-}
-
-function resetChatState() {
-  panelState.chatStreaming = false;
-  chatController.reset();
-  chatQueueRuntime.clearQueuedMessages();
-  chatJumpBtn.classList.remove("isVisible");
-  chatSession.reset();
-  lastNavigationMessageUrl = null;
 }
 
 async function runAgentLoop() {
