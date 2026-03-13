@@ -1,4 +1,5 @@
 import { SUMMARY_LENGTH_SPECS } from "@steipete/summarize-core/prompts";
+import type { SummaryLength, SseSlidesData } from "../../lib/runtime-contracts";
 import {
   buildSlideTextFallback,
   coerceSummaryWithSlides,
@@ -7,9 +8,7 @@ import {
   splitSlideTitleFromText,
   splitSummaryFromSlides,
   type SlideTimelineEntry,
-} from "../../../../../src/run/flows/url/slides-text.js";
-import type { SummaryLength } from "../../../../../src/shared/contracts.js";
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
+} from "../../lib/slides-text";
 import { chooseSlideDescription, sanitizeSlideSummaryTitle } from "./slide-text-policy";
 import { shouldHideSummaryForSlides } from "./slides-view-policy";
 

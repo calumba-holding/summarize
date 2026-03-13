@@ -1,4 +1,4 @@
-import { parseTranscriptTimedText } from "../../../../../src/run/flows/url/slides-text.js";
+import { parseTranscriptTimedText } from "../../lib/slides-text";
 import type {
   SlideLike,
   SlidesSessionDerivedState,

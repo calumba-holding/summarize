@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { parseSseEvent } from "../../../../src/shared/sse-events.js";
+import { parseSseEvent } from "./runtime-contracts";
 import { parseSseStream } from "./sse";
 
 type AgentJsonResponse = { ok?: boolean; assistant?: AssistantMessage; error?: string };

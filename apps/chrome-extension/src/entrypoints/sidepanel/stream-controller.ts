@@ -1,8 +1,4 @@
-import {
-  parseSseEvent,
-  type SseMetaData,
-  type SseSlidesData,
-} from "../../../../../src/shared/sse-events.js";
+import { parseSseEvent, type SseMetaData, type SseSlidesData } from "../../lib/runtime-contracts";
 import { parseSseStream, type SseMessage } from "../../lib/sse";
 import {
   accumulateChatChunk,

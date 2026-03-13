@@ -1,16 +1,16 @@
 import type { Message, ToolCall } from "@mariozechner/pi-ai";
 import { extractYouTubeVideoId } from "@steipete/summarize-core/content/url";
 import MarkdownIt from "markdown-it";
-import { splitSummaryFromSlides } from "../../../../../src/run/flows/url/slides-text.js";
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
 import { executeToolCall, getAutomationToolNames } from "../../automation/tools";
 import type { BgToPanel, PanelToBg } from "../../lib/panel-contracts";
+import type { SseSlidesData } from "../../lib/runtime-contracts";
 import {
   defaultSettings,
   loadSettings,
   patchSettings,
   type SlidesLayout,
 } from "../../lib/settings";
+import { splitSummaryFromSlides } from "../../lib/slides-text";
 import { generateToken } from "../../lib/token";
 import { createAppearanceControls } from "./appearance-controls";
 import { createSidepanelBgMessageRuntime } from "./bg-message-runtime";

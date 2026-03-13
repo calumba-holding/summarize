@@ -1,5 +1,5 @@
-import { parseSseEvent } from "../../../../../src/shared/sse-events.js";
 import { readPresetOrCustomValue } from "../../lib/combo";
+import { parseSseEvent } from "../../lib/runtime-contracts";
 import type { Settings } from "../../lib/settings";
 import { parseSseStream } from "../../lib/sse";
 

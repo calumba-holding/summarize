@@ -1,5 +1,5 @@
 import type MarkdownIt from "markdown-it";
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
+import type { SseSlidesData } from "../../lib/runtime-contracts";
 import type { SlidesLayout } from "../../lib/settings";
 import { createSlideImageLoader, normalizeSlideImageUrl } from "./slide-images";
 import { resolveSlidesPayload, slidesPayloadChanged } from "./slides-payload";

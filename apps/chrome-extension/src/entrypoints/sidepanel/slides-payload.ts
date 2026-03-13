@@ -1,4 +1,4 @@
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
+import type { SseSlidesData } from "../../lib/runtime-contracts";
 import { hasResolvedSlidesPayload } from "./slides-pending";
 
 type SlidesPayload = NonNullable<SseSlidesData>;

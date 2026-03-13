@@ -1,4 +1,4 @@
-import { mergeStreamingChunk } from "../../../../../src/shared/streaming-merge.js";
+import { mergeStreamingChunk } from "../../lib/runtime-contracts";
 
 export function accumulateSummarizeChunk(markdown: string, chunk: string): string {
   return mergeStreamingChunk(markdown, chunk).next;

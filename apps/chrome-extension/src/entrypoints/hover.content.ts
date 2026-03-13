@@ -1,5 +1,5 @@
 import { defineContentScript } from "wxt/utils/define-content-script";
-import { mergeStreamingChunk } from "../../../../src/shared/streaming-merge.js";
+import { mergeStreamingChunk } from "../lib/runtime-contracts";
 import { loadSettings, type Settings } from "../lib/settings";
 
 type HoverCacheEntry = {

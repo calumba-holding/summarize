@@ -1,5 +1,5 @@
-import { parseSseEvent } from "../../../../../src/shared/sse-events.js";
 import { logExtensionEvent } from "../../lib/extension-logs";
+import { parseSseEvent } from "../../lib/runtime-contracts";
 import { loadSettings } from "../../lib/settings";
 import { parseSseStream } from "../../lib/sse";
 import { friendlyFetchError } from "./daemon-client";

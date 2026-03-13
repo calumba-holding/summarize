@@ -1,4 +1,4 @@
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
+import type { SseSlidesData } from "../../lib/runtime-contracts";
 import type { SlidesLayout } from "../../lib/settings";
 import { resolveSlidesRenderLayout } from "./slides-view-policy";
 

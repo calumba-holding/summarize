@@ -1,6 +1,6 @@
 import type { Message } from "@mariozechner/pi-ai";
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
 import type { RunStart, UiState } from "../../lib/panel-contracts";
+import type { SseSlidesData } from "../../lib/runtime-contracts";
 export type { RunStart, UiState } from "../../lib/panel-contracts";
 
 export type PanelPhase = "idle" | "setup" | "connecting" | "streaming" | "error";

@@ -1,4 +1,4 @@
-import { coerceSummaryWithSlides } from "../../../../../src/run/flows/url/slides-text.js";
+import { coerceSummaryWithSlides } from "../../lib/slides-text";
 import { resolveSlidesLengthArg } from "./slides-state";
 import { createStreamController } from "./stream-controller";
 import type { PanelState, RunStart, UiState } from "./types";

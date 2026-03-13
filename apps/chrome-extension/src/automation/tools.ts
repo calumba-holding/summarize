@@ -1,5 +1,5 @@
 import type { ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
-import { parseSseEvent } from "../../../../src/shared/sse-events.js";
+import { parseSseEvent } from "../lib/runtime-contracts";
 import { loadSettings } from "../lib/settings";
 import { parseSseStream } from "../lib/sse";
 import {

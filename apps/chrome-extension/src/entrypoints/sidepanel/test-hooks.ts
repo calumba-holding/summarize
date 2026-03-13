@@ -1,5 +1,5 @@
-import type { SseSlidesData } from "../../../../../src/shared/sse-events.js";
 import type { BgToPanel, RunStart, UiState } from "../../lib/panel-contracts";
+import type { SseSlidesData } from "../../lib/runtime-contracts";
 import type { SlidesLayout } from "../../lib/settings";
 import type { PanelPhase } from "./types";
 

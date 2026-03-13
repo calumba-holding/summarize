@@ -1,5 +1,5 @@
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
-import type { SseSlidesData } from "../../../../src/shared/sse-events.js";
+import type { SseSlidesData } from "./runtime-contracts";
 
 export type UiState = {
   panelOpen: boolean;
