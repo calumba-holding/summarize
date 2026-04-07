@@ -6,10 +6,8 @@ export type PlatformKind = "mac" | "windows" | "linux" | "other";
 export function resolvePlatformKind(): PlatformKind {
   const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
   const uaPlatform = nav.userAgentData?.platform;
-  const effectivePlatform = (uaPlatform && uaPlatform.trim()) ? uaPlatform : navigator.platform;
-  const raw = (effectivePlatform ?? navigator.userAgent ?? "")
-    .toLowerCase()
-    .trim();
+  const effectivePlatform = uaPlatform && uaPlatform.trim() ? uaPlatform : navigator.platform;
+  const raw = (effectivePlatform ?? navigator.userAgent ?? "").toLowerCase().trim();
 
   if (raw.includes("mac")) return "mac";
   if (raw.includes("win")) return "windows";
