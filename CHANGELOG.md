@@ -4,8 +4,8 @@
 
 ### Features
 
-- Models: add explicit `github-copilot/...` model support backed by GitHub Models, including shorthand ids like `github-copilot/gpt-5.4` and `GITHUB_TOKEN` / `GH_TOKEN` auth.
 - Slides: support `--slides` for local video files in the main CLI and `summarize slides`, route local videos through the shared slide-aware flow, and document the local-file workflow (#149, thanks @steipete).
+- Models: add explicit `github-copilot/...` model support backed by GitHub Models, including shorthand ids like `github-copilot/gpt-5.4` and `GITHUB_TOKEN` / `GH_TOKEN` auth.
 - Models: add OpenCode as a first-class CLI provider across CLI flags, config, auto fallback, daemon picker/chat flows, and Chrome extension settings, while preserving existing OpenClaw behavior (#169, thanks @maciej).
 - CLI providers: add OpenClaw as a configurable CLI backend (`--cli openclaw`, `cli/openclaw/...`, `openclaw/...`) across config, daemon discovery, and docs (#165, thanks @yqf-ai).
 - Config: allow setting a default summary length via `output.length`, and keep prompt-override runs aligned with the configured length/language defaults in both CLI and daemon flows (#178, thanks @maciej).
@@ -13,26 +13,26 @@
 
 ### Fixes
 
-- Chrome extension: add a copy button for rendered summaries so results can be copied without manual selection.
-- GitHub Models: make `github-copilot/...` shorthand inference family-based instead of pinning old exact prefixes, so newer ids like `gpt-5.4`, `o5`, and `claude-opus-4.6` normalize correctly when the backend exposes them.
 - OpenAI models: route GPT-5.4 / GPT-5.4 mini / GPT-5.4 nano / GPT-5 mini / GPT-5 nano text requests through direct provider APIs instead of the stale generic parser, preserve the real `gpt-5.4-mini` / `gpt-5.4-nano` ids end-to-end, and fall GitHub Models OpenAI GPT-5-family requests back to `gpt-5-chat` when GitHub rejects the raw id.
-- Transcription: retry Groq Whisper uploads via `curl` when Node multipart uploads get a 403, fixing local `.ogg` regressions on some environments.
-- CLI providers: stream OpenClaw prompts over stdin instead of `--message`, make daemon side-panel chat honor `openai.useChatCompletions`/custom OpenAI-compatible base URLs, and stop leaking raw Codex JSONL events like `thread.started` when no assistant text was produced.
+- GitHub Models: make `github-copilot/...` shorthand inference family-based instead of pinning old exact prefixes, so newer ids like `gpt-5.4`, `o5`, and `claude-opus-4.6` normalize correctly when the backend exposes them.
 - Slides/local video: transcribe direct videos for slide summaries, avoid fake local-file “Downloading audio” phases, and keep progress text visible while slide extraction runs.
 - Chrome extension slides: restore slide text/session state more reliably so reruns and reloads do not leave stale or blank slide summaries.
-- Windows daemon: keep Scheduled Task startup hidden without breaking `summarize daemon restart` or uninstall by tracking the hidden daemon PID and killing that process tree before reruns/removal (#146, thanks @mathicg).
-- Windows containers: let `summarize daemon install` start the daemon for the current container session without Scheduled Task registration, keep `0.0.0.0` binding Windows-only, and probe slide tools by spawning commands when PATH lookup is unreliable (#152, thanks @mathicg).
+- Transcription: retry Groq Whisper uploads via `curl` when Node multipart uploads get a 403, fixing local `.ogg` regressions on some environments.
 - YouTube: detect obviously truncated caption-track transcripts on long videos and fall through to yt-dlp transcription instead of caching a broken partial result (#184, thanks @sportiz91).
 - YouTube: treat yt-dlp “no audio stream” videos as a non-fatal unavailable transcript case so summarize can continue cleanly with an explanatory note (#161, thanks @mdsakalu).
 - Cache: include the prompt `<context>` block in summary cache hashing and bump the cache format version so stale cross-page summary collisions cannot be reused (#171, thanks @mvance).
-- Daemon models: gracefully fall back for unrecognized custom models when using proxy base URLs instead of crashing on undefined API metadata (#175, thanks @douo).
-- Whisper.cpp: honor config-resolved transcription env overrides for readiness checks, model display, and local transcription so custom binary/model paths work outside `process.env` (#160, thanks @mdsakalu).
+- CLI providers: stream OpenClaw prompts over stdin instead of `--message`, make daemon side-panel chat honor `openai.useChatCompletions`/custom OpenAI-compatible base URLs, and stop leaking raw Codex JSONL events like `thread.started` when no assistant text was produced.
+- Chrome extension: add a copy button for rendered summaries so results can be copied without manual selection.
 - Chrome extension chat: handle plain-string assistant replies in the side-panel agent loop instead of crashing on `.filter()` tool-call extraction (#186, thanks @Youpen-y).
+- Windows containers: let `summarize daemon install` start the daemon for the current container session without Scheduled Task registration, keep `0.0.0.0` binding Windows-only, and probe slide tools by spawning commands when PATH lookup is unreliable (#152, thanks @mathicg).
+- Windows daemon: keep Scheduled Task startup hidden without breaking `summarize daemon restart` or uninstall by tracking the hidden daemon PID and killing that process tree before reruns/removal (#146, thanks @mathicg).
+- Whisper.cpp: honor config-resolved transcription env overrides for readiness checks, model display, and local transcription so custom binary/model paths work outside `process.env` (#160, thanks @mdsakalu).
+- Daemon models: gracefully fall back for unrecognized custom models when using proxy base URLs instead of crashing on undefined API metadata (#175, thanks @douo).
 - Docs/setup: switch Homebrew instructions from the old tap to the official `brew install summarize` formula, including the side-panel setup UI and release checklist (#172, thanks @zeldrisho).
 - Chrome extension: detect blank `userAgentData.platform` browsers like Vivaldi by falling back to `navigator.platform` before choosing OS-specific setup instructions (#158, thanks @bytrangle).
-- Homebrew: make the tap formula fail clearly on Linux instead of installing a macOS binary, and add generator/test coverage for the macOS-only guard (#147, thanks @steipete).
 - Firecrawl: reject `--firecrawl always` for YouTube URLs with an explicit guidance error instead of silently skipping Firecrawl on the transcript-first path (#145, thanks @steipete).
 - YouTube: keep Gemini-only no-caption runs on the transcription path by forwarding the Google API key from the top-level URL flow into link-preview transcription config (#148, thanks @bytrangle).
+- Homebrew: make the tap formula fail clearly on Linux instead of installing a macOS binary, and add generator/test coverage for the macOS-only guard (#147, thanks @steipete).
 - Maintenance: update the GitHub Pages workflow to `actions/configure-pages@v6` and `actions/deploy-pages@v5` (#182, thanks @dependabot).
 
 ## 0.12.0 - 2026-03-11
