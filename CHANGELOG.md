@@ -4,7 +4,7 @@
 
 ### Features
 
-- Models: add explicit `github-copilot/...` model support backed by GitHub Models, including shorthand ids like `github-copilot/gpt-4.1` and `GITHUB_TOKEN` / `GH_TOKEN` auth.
+- Models: add explicit `github-copilot/...` model support backed by GitHub Models, including shorthand ids like `github-copilot/gpt-5.4` and `GITHUB_TOKEN` / `GH_TOKEN` auth.
 - Slides: support `--slides` for local video files in the main CLI and `summarize slides`, route local videos through the shared slide-aware flow, and document the local-file workflow (#149, thanks @steipete).
 - Models: add OpenCode as a first-class CLI provider across CLI flags, config, auto fallback, daemon picker/chat flows, and Chrome extension settings, while preserving existing OpenClaw behavior (#169, thanks @maciej).
 - CLI providers: add OpenClaw as a configurable CLI backend (`--cli openclaw`, `cli/openclaw/...`, `openclaw/...`) across config, daemon discovery, and docs (#165, thanks @yqf-ai).
@@ -15,6 +15,7 @@
 
 - Chrome extension: add a copy button for rendered summaries so results can be copied without manual selection.
 - GitHub Models: make `github-copilot/...` shorthand inference family-based instead of pinning old exact prefixes, so newer ids like `gpt-5.4`, `o5`, and `claude-opus-4.6` normalize correctly when the backend exposes them.
+- OpenAI models: route GPT-5.4 / GPT-5 mini / GPT-5 nano text requests through direct provider APIs instead of the stale generic parser, normalize `gpt-5.4-mini` / `gpt-5.4-nano` shorthands to the live mini/nano ids, and fall GitHub Models OpenAI GPT-5-family requests back to `gpt-5-chat` when GitHub rejects the raw id.
 - Transcription: retry Groq Whisper uploads via `curl` when Node multipart uploads get a 403, fixing local `.ogg` regressions on some environments.
 - CLI providers: stream OpenClaw prompts over stdin instead of `--message`, make daemon side-panel chat honor `openai.useChatCompletions`/custom OpenAI-compatible base URLs, and stop leaking raw Codex JSONL events like `thread.started` when no assistant text was produced.
 - Slides/local video: transcribe direct videos for slide summaries, avoid fake local-file “Downloading audio” phases, and keep progress text visible while slide extraction runs.

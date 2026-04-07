@@ -247,7 +247,7 @@ ${heading("Examples")}
   ${cmd('summarize slides "https://www.youtube.com/watch?v=..." --render auto')} ${dim("# slides-only mode with inline thumbnails")}
   ${cmd("summarize transcriber setup")} ${dim("# configure local ONNX transcription (parakeet/canary)")}
   ${cmd('summarize "https://example.com" --length 20k --max-output-tokens 2k --timeout 2m --model openai/gpt-5-mini')}
-  ${cmd('summarize "https://example.com" --model github-copilot/gpt-5')} ${dim("# GitHub Models via GITHUB_TOKEN")}
+  ${cmd('summarize "https://example.com" --model github-copilot/gpt-5.4')} ${dim("# GitHub Models via GITHUB_TOKEN")}
   ${cmd('summarize "https://example.com" --model mymodel')} ${dim("# config preset")}
   ${cmd('summarize "https://example.com" --json --verbose')}
   ${cmd("pbpaste | summarize -")} ${dim("# summarize clipboard content")}

@@ -47,9 +47,11 @@ installed, auto mode can use local CLI models via `cli.enabled` or implicit auto
     - `cli/agent/gpt-5.2`
     - `cli/openclaw/main`
     - `cli/opencode/openai/gpt-5.4`
+    - `openai/gpt-5.4`
     - `google/gemini-3-flash`
     - `openai/gpt-5-mini`
-    - `github-copilot/gpt-5`
+    - `openai/gpt-5-nano`
+    - `github-copilot/gpt-5.4`
     - `nvidia/z-ai/glm5`
     - `zai/glm-4.7`
     - `xai/grok-4-fast-non-reasoning`
@@ -108,13 +110,14 @@ Use `--model zai/<model>` (e.g. `zai/glm-4.7`). Defaults to Z.AI’s base URL an
 Use `--model github-copilot/<model>` for explicit GitHub-hosted model calls.
 
 - Examples:
-  - `github-copilot/gpt-5`
+  - `github-copilot/gpt-5.4`
   - `github-copilot/gpt-5-mini`
+  - `github-copilot/gpt-5-nano`
   - `github-copilot/anthropic/claude-haiku-4.5`
 - Auth: `GITHUB_TOKEN` or `GH_TOKEN`
 - Transport: GitHub Models chat completions (`https://models.github.ai/inference`)
 - Notes:
-  - bare shorthand like `github-copilot/gpt-5` or `github-copilot/claude-opus-4.6` auto-expands to the provider-qualified backend id
+  - bare shorthand like `github-copilot/gpt-5.4` or `github-copilot/claude-opus-4.6` auto-expands to the provider-qualified backend id
   - document attachments stay unsupported in this mode
 
 ## Input limits

@@ -264,7 +264,10 @@ Use gateway-style ids: `<provider>/<model>`.
 
 Examples:
 
+- `openai/gpt-5.4`
 - `openai/gpt-5-mini`
+- `openai/gpt-5-nano`
+- `github-copilot/gpt-5.4`
 - `anthropic/claude-sonnet-4-5`
 - `xai/grok-4-fast-non-reasoning`
 - `google/gemini-3-flash`
@@ -272,6 +275,7 @@ Examples:
 - `openrouter/openai/gpt-5-mini` (force OpenRouter)
 
 Note: some models/providers do not support streaming or certain file media types. When that happens, the CLI prints a friendly error (or auto-disables streaming for that model when supported by the provider).
+For convenience, `openai/gpt-5.4-mini` and `openai/gpt-5.4-nano` normalize to `openai/gpt-5-mini` and `openai/gpt-5-nano`; the same shorthand also works under `github-copilot/...`.
 
 ### Limits
 
