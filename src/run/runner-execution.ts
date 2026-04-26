@@ -3,16 +3,16 @@ import { loadLocalAsset, type InputTarget } from "../content/asset.js";
 import { isDirectVideoInput } from "../content/index.js";
 import type { RunMetricsReport } from "../costs.js";
 import type { ExecFileFn } from "../markitdown.js";
+import { startSpinner } from "../tty/spinner.js";
 import type { AssetAttachment } from "./attachments.js";
+import { MAX_PDF_EXTRACT_BYTES } from "./constants.js";
 import { extractAssetContent } from "./flows/asset/extract.js";
 import type { AssetExtractContext } from "./flows/asset/extract.js";
 import { handleFileInput, isPdfExtension, withUrlAsset } from "./flows/asset/input.js";
 import { outputExtractedAsset } from "./flows/asset/output.js";
 import type { SummarizeAssetArgs } from "./flows/asset/summary.js";
-import { MAX_PDF_EXTRACT_BYTES } from "./constants.js";
 import { runUrlFlow } from "./flows/url/flow.js";
 import { createTempFileFromStdin } from "./stdin-temp-file.js";
-import { startSpinner } from "../tty/spinner.js";
 
 export async function executeRunnerInput(options: {
   inputTarget: InputTarget;

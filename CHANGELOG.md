@@ -2,6 +2,10 @@
 
 ## 0.14.0 - UNRELEASED
 
+### Features
+
+- CLI extraction: support `--extract` for local PDF files through the existing markitdown preprocessing path, without requiring an LLM (#203, thanks @mvance).
+
 ### Fixes
 
 - CLI auto models: include config-provided environment values when selecting `auto` candidates, so API keys in `~/.summarize/config.json` are honored for URL summaries (#206, fixes #205, thanks @kaihendry and @solomonneas).
