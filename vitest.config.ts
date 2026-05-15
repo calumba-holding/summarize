@@ -5,10 +5,17 @@ import { defineConfig } from "vitest/config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const cpuCount = Math.max(1, cpus().length);
-const envMaxThreads = Number.parseInt(process.env.VITEST_MAX_THREADS ?? "", 10);
-const maxThreads = Number.isFinite(envMaxThreads)
-  ? envMaxThreads
-  : Math.min(8, Math.max(4, Math.floor(cpuCount / 2)));
+const POSITIVE_INTEGER_PATTERN = /^[1-9]\d*$/u;
+
+export function resolveMaxThreads(raw: string | undefined, availableCpus = cpuCount): number {
+  const fallback = Math.min(8, Math.max(4, Math.floor(Math.max(1, availableCpus) / 2)));
+  const value = raw?.trim();
+  if (!value || !POSITIVE_INTEGER_PATTERN.test(value)) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) ? parsed : fallback;
+}
+
+const maxThreads = resolveMaxThreads(process.env.VITEST_MAX_THREADS);
 const coverageReporters = process.env.CI
   ? ["text", "json-summary", "html"]
   : ["text", "json-summary"];
