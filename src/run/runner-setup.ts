@@ -20,12 +20,14 @@ export function prepareRunEnvironment(
 export function handleVersionFlag({
   versionRequested,
   stdout,
+  importMetaUrl,
 }: {
   versionRequested: boolean;
   stdout: NodeJS.WritableStream;
+  importMetaUrl?: string;
 }) {
   if (!versionRequested) return false;
-  stdout.write(`${formatVersionLine()}\n`);
+  stdout.write(`${formatVersionLine(importMetaUrl)}\n`);
   return true;
 }
 

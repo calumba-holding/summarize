@@ -51,7 +51,13 @@ export async function runCli(
   const program = buildCliProgram({ normalizedArgv, envForRun, stdout, stderr });
   if (!program) return;
 
-  if (handleVersionFlag({ versionRequested: Boolean(program.opts().version), stdout })) {
+  if (
+    handleVersionFlag({
+      versionRequested: Boolean(program.opts().version),
+      stdout,
+      importMetaUrl: import.meta.url,
+    })
+  ) {
     return;
   }
 

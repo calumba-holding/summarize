@@ -79,7 +79,7 @@ export async function handleSlidesCliRequest({
   }
 
   if (program.opts().version) {
-    stdout.write(`${formatVersionLine()}\n`);
+    stdout.write(`${formatVersionLine(import.meta.url)}\n`);
     return true;
   }
 

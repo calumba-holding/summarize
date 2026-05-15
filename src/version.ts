@@ -55,6 +55,60 @@ function truncateSha(sha: string, length = 8): string {
   return trimmed.slice(0, length);
 }
 
+function readShortSha(filePath: string): string | null {
+  try {
+    const sha = truncateSha(fs.readFileSync(filePath, "utf8"));
+    return sha.length > 0 ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGitCommonDir(gitDir: string): string {
+  try {
+    const raw = fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim();
+    if (raw) return path.isAbsolute(raw) ? raw : path.resolve(gitDir, raw);
+  } catch {
+    // ignore
+  }
+
+  return gitDir;
+}
+
+function resolveGitRef(gitDir: string, ref: string): string | null {
+  const directSha = readShortSha(path.join(gitDir, ref));
+  if (directSha) return directSha;
+
+  const commonDir = resolveGitCommonDir(gitDir);
+  if (commonDir !== gitDir) {
+    const commonSha = readShortSha(path.join(commonDir, ref));
+    if (commonSha) return commonSha;
+  }
+
+  const packedRefsPaths =
+    commonDir === gitDir
+      ? [path.join(gitDir, "packed-refs")]
+      : [path.join(gitDir, "packed-refs"), path.join(commonDir, "packed-refs")];
+  for (const packedRefsPath of packedRefsPaths) {
+    try {
+      const packed = fs.readFileSync(packedRefsPath, "utf8");
+      const lines = packed.split(/\r?\n/);
+      for (const line of lines) {
+        if (!line || line.startsWith("#") || line.startsWith("^")) continue;
+        const [shaRaw, refName] = line.split(" ");
+        if (refName?.trim() === ref) {
+          const sha = truncateSha(shaRaw ?? "");
+          if (sha.length > 0) return sha;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 function resolveGitShaFromGitDir(gitDir: string): string | null {
   const headPath = path.join(gitDir, "HEAD");
   let head = "";
@@ -72,29 +126,21 @@ function resolveGitShaFromGitDir(gitDir: string): string | null {
 
   const ref = head.replace(/^ref:\s*/i, "").trim();
   if (!ref) return null;
+  return resolveGitRef(gitDir, ref);
+}
 
-  const refPath = path.join(gitDir, ref);
-  try {
-    const sha = truncateSha(fs.readFileSync(refPath, "utf8"));
-    return sha.length > 0 ? sha : null;
-  } catch {
-    // fall through to packed-refs
-  }
-
-  const packedRefsPath = path.join(gitDir, "packed-refs");
-  try {
-    const packed = fs.readFileSync(packedRefsPath, "utf8");
-    const lines = packed.split(/\r?\n/);
-    for (const line of lines) {
-      if (!line || line.startsWith("#") || line.startsWith("^")) continue;
-      const [shaRaw, refName] = line.split(" ");
-      if (refName?.trim() === ref) {
-        const sha = truncateSha(shaRaw ?? "");
-        return sha.length > 0 ? sha : null;
-      }
+function findNearestPackageRoot(startDir: string): string | null {
+  let dir = startDir;
+  for (let i = 0; i < 10; i += 1) {
+    try {
+      if (fs.statSync(path.join(dir, "package.json")).isFile()) return dir;
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
+
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
 
   return null;
@@ -121,6 +167,7 @@ export function resolveGitSha(importMetaUrl?: string): string | null {
     return process.cwd();
   })();
 
+  const packageRoot = typeof importMetaUrl === "string" ? findNearestPackageRoot(startDir) : null;
   let dir = startDir;
   for (let i = 0; i < 10; i += 1) {
     const dotGit = path.join(dir, ".git");
@@ -146,6 +193,7 @@ export function resolveGitSha(importMetaUrl?: string): string | null {
 
     const parent = path.dirname(dir);
     if (parent === dir) break;
+    if (packageRoot && dir === packageRoot) break;
     dir = parent;
   }
 
