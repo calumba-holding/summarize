@@ -46,6 +46,13 @@ export type Settings = {
 export type SlidesLayout = "strip" | "gallery";
 
 const storageKey = "settings";
+const COUNT_PATTERN = /^(?<value>\d+(?:\.\d+)?)(?<unit>k|m)?$/i;
+const DURATION_PATTERN = /^(?<value>\d+(?:\.\d+)?)(?<unit>ms|s|m|h)?$/i;
+const MIN_MAX_CHARS = 20_000;
+const MAX_MAX_CHARS = 2_000_000;
+const MIN_MAX_OUTPUT_TOKENS = 16;
+const MIN_FONT_SIZE = 12;
+const MAX_FONT_SIZE = 20;
 
 const legacyFontFamilyMap = new Map<string, string>([
   [
@@ -199,6 +206,10 @@ function normalizeTimeout(value: unknown): string {
   if (typeof value !== "string") return defaultSettings.timeout;
   const trimmed = value.trim();
   if (!trimmed) return defaultSettings.timeout;
+  const match = DURATION_PATTERN.exec(trimmed);
+  if (!match?.groups) return defaultSettings.timeout;
+  const numeric = Number(match.groups.value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return defaultSettings.timeout;
   return trimmed;
 }
 
@@ -218,7 +229,43 @@ function normalizeRetries(value: unknown): number | null {
 
 function normalizeMaxOutputTokens(value: unknown): string {
   if (typeof value !== "string") return defaultSettings.maxOutputTokens;
-  return value.trim();
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return defaultSettings.maxOutputTokens;
+  const match = COUNT_PATTERN.exec(trimmed);
+  if (!match?.groups) return defaultSettings.maxOutputTokens;
+  const numeric = Number(match.groups.value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return defaultSettings.maxOutputTokens;
+  const unit = match.groups.unit?.toLowerCase() ?? null;
+  const multiplier = unit === "k" ? 1000 : unit === "m" ? 1_000_000 : 1;
+  const tokens = Math.floor(numeric * multiplier);
+  if (tokens < MIN_MAX_OUTPUT_TOKENS) return defaultSettings.maxOutputTokens;
+  return trimmed;
+}
+
+function normalizeMaxChars(value: unknown): number {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isFinite(numeric)) return defaultSettings.maxChars;
+  const intValue = Math.floor(numeric);
+  if (intValue < MIN_MAX_CHARS || intValue > MAX_MAX_CHARS) return defaultSettings.maxChars;
+  return intValue;
+}
+
+function normalizeFontSize(value: unknown): number {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isFinite(numeric)) return defaultSettings.fontSize;
+  const intValue = Math.round(numeric);
+  if (intValue < MIN_FONT_SIZE || intValue > MAX_FONT_SIZE) return defaultSettings.fontSize;
+  return intValue;
 }
 
 function normalizeLineHeight(value: unknown): number {
@@ -329,7 +376,7 @@ export async function loadSettings(): Promise<Settings> {
     ),
     hoverPrompt: normalizeHoverPrompt(raw.hoverPrompt),
     transcriber: normalizeTranscriber(raw.transcriber),
-    maxChars: typeof raw.maxChars === "number" ? raw.maxChars : defaultSettings.maxChars,
+    maxChars: normalizeMaxChars(raw.maxChars),
     requestMode: normalizeRequestMode(raw.requestMode),
     firecrawlMode: normalizeFirecrawlMode(raw.firecrawlMode),
     markdownMode: normalizeMarkdownMode(raw.markdownMode),
@@ -339,7 +386,7 @@ export async function loadSettings(): Promise<Settings> {
     retries: normalizeRetries(raw.retries),
     maxOutputTokens: normalizeMaxOutputTokens(raw.maxOutputTokens),
     fontFamily: normalizeFontFamily(raw.fontFamily),
-    fontSize: typeof raw.fontSize === "number" ? raw.fontSize : defaultSettings.fontSize,
+    fontSize: normalizeFontSize(raw.fontSize),
     lineHeight: normalizeLineHeight(raw.lineHeight),
     colorScheme: normalizeColorScheme(raw.colorScheme),
     colorMode: normalizeColorMode(raw.colorMode),
@@ -367,6 +414,8 @@ export async function saveSettings(settings: Settings): Promise<void> {
       maxOutputTokens: normalizeMaxOutputTokens(settings.maxOutputTokens),
       transcriber: normalizeTranscriber(settings.transcriber),
       fontFamily: normalizeFontFamily(settings.fontFamily),
+      maxChars: normalizeMaxChars(settings.maxChars),
+      fontSize: normalizeFontSize(settings.fontSize),
       lineHeight: normalizeLineHeight(settings.lineHeight),
       colorScheme: normalizeColorScheme(settings.colorScheme),
       colorMode: normalizeColorMode(settings.colorMode),

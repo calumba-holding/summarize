@@ -88,6 +88,37 @@ describe("chrome/settings", () => {
     expect(loaded.maxOutputTokens).toBe("2k");
   });
 
+  it("drops invalid advanced numeric settings", async () => {
+    await saveSettings({
+      ...defaultSettings,
+      maxChars: Number.NaN,
+      timeout: "soon",
+      maxOutputTokens: "8",
+      fontSize: 99,
+    });
+
+    const raw = storage.settings as Record<string, unknown>;
+    expect(raw.maxChars).toBe(defaultSettings.maxChars);
+    expect(raw.timeout).toBe(defaultSettings.timeout);
+    expect(raw.maxOutputTokens).toBe(defaultSettings.maxOutputTokens);
+    expect(raw.fontSize).toBe(defaultSettings.fontSize);
+  });
+
+  it("normalizes numeric settings loaded from storage", async () => {
+    storage.settings = {
+      maxChars: "40000",
+      timeout: "1.5m",
+      maxOutputTokens: "1.5k",
+      fontSize: "15.4",
+    };
+
+    const loaded = await loadSettings();
+    expect(loaded.maxChars).toBe(40_000);
+    expect(loaded.timeout).toBe("1.5m");
+    expect(loaded.maxOutputTokens).toBe("1.5k");
+    expect(loaded.fontSize).toBe(15);
+  });
+
   it("normalizes auto CLI fallback settings", async () => {
     await saveSettings({
       ...defaultSettings,
