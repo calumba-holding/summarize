@@ -1,4 +1,5 @@
 node_modules
+.clawpatch/
 dist
 dist-bun
 *.bun-build

@@ -1,10 +1,26 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import JSON5 from "json5";
 import { describe, expect, it } from "vitest";
 
 const rootPackage = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as {
   scripts: Record<string, string>;
+  devDependencies: Record<string, string>;
+  engines: Record<string, string>;
 };
+const corePackage = JSON.parse(readFileSync(resolve("packages/core/package.json"), "utf8")) as {
+  devDependencies: Record<string, string>;
+  engines: Record<string, string>;
+};
+const oxfmtConfig = JSON5.parse(readFileSync(resolve(".oxfmtrc.jsonc"), "utf8")) as {
+  ignorePatterns?: string[];
+};
+
+function majorFromRange(range: string): number {
+  const match = range.match(/\d+/u);
+  if (!match) throw new Error(`No major version in range: ${range}`);
+  return Number(match[0]);
+}
 
 describe("package scripts", () => {
   it("keeps the root check gate complete", () => {
@@ -34,5 +50,15 @@ describe("package scripts", () => {
 
   it("runs vitest in non-watch mode from the root test script", () => {
     expect(rootPackage.scripts.test).toBe("vitest run");
+  });
+
+  it("keeps formatter checks away from local tool metadata", () => {
+    expect(oxfmtConfig.ignorePatterns).toContain(".clawpatch/");
+  });
+
+  it("keeps Node typings aligned with the supported engine floor", () => {
+    const rootNodeMajor = majorFromRange(rootPackage.engines.node);
+    expect(majorFromRange(rootPackage.devDependencies["@types/node"])).toBe(rootNodeMajor);
+    expect(majorFromRange(corePackage.devDependencies["@types/node"])).toBe(rootNodeMajor);
   });
 });

@@ -28,14 +28,48 @@ describe("package bin wrappers", () => {
       expect(wrapper.startsWith("#!/usr/bin/env node\n")).toBe(true);
       if (process.platform !== "win32") expect(mode & 0o111).not.toBe(0);
 
-      const result = spawnSync(process.execPath, [wrapperPath, "--version"], {
+      const result = spawnSync(
+        process.platform === "win32" ? process.execPath : wrapperPath,
+        process.platform === "win32" ? [wrapperPath, "--version"] : ["--version"],
+        {
+          encoding: "utf8",
+          env: { ...process.env, NO_COLOR: "1" },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout.trim()).toBe("0.0.0-test");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the generated package entry executable without a node prefix on POSIX", async () => {
+    if (process.platform === "win32") return;
+
+    const root = await mkdtemp(join(tmpdir(), "summarize-bin-direct-"));
+    try {
+      const distDir = join(root, "dist");
+      await mkdir(join(distDir, "esm"), { recursive: true });
+      await writeFile(
+        join(distDir, "esm", "cli.js"),
+        "if (process.argv.includes('--version')) process.stdout.write('0.0.0-direct\\n');\n",
+        "utf8",
+      );
+
+      const buildCli = (await import("../scripts/build-cli.mjs")) as {
+        writeCliWrapper: (distDir: string) => Promise<string>;
+      };
+      const wrapperPath = await buildCli.writeCliWrapper(distDir);
+      const result = spawnSync(wrapperPath, ["--version"], {
         encoding: "utf8",
         env: { ...process.env, NO_COLOR: "1" },
       });
 
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout.trim()).toBe("0.0.0-test");
+      expect(result.stdout.trim()).toBe("0.0.0-direct");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

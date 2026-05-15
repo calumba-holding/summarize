@@ -15,10 +15,6 @@ export function resolveMaxThreads(raw: string | undefined, availableCpus = cpuCo
   return Number.isSafeInteger(parsed) ? parsed : fallback;
 }
 
-const coverageReporters = process.env.CI
-  ? ["text", "json-summary", "html"]
-  : ["text", "json-summary"];
-
 export function createVitestConfig({
   env = process.env,
   availableCpus = cpuCount,
@@ -27,6 +23,7 @@ export function createVitestConfig({
   availableCpus?: number;
 } = {}) {
   const maxWorkers = resolveMaxThreads(env.VITEST_MAX_THREADS, availableCpus);
+  const coverageReporters = env.CI ? ["text", "json-summary", "html"] : ["text", "json-summary"];
   return defineConfig({
     resolve: {
       alias: [

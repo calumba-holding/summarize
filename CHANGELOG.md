@@ -9,6 +9,7 @@
 
 ### Fixes
 
+- Test/release gates: ignore local Clawpatch metadata during format checks, align Node typings with the Node 24 engine floor, and cover media path/cache wiring.
 - Test gates: wire `VITEST_MAX_THREADS` through Vitest 4 `maxWorkers` and add package bin/script regression coverage.
 - Dependencies: update workspace packages and replace deprecated `@mariozechner/pi-ai` with `@earendil-works/pi-ai`.
 - CLI performance: add opt-in startup/first-output tracing and avoid network LiteLLM catalog refreshes on fixed-model summary streaming and finish-line cost estimation.

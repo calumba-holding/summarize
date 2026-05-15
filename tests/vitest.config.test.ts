@@ -23,4 +23,16 @@ describe("vitest config", () => {
     expect(config.test?.maxWorkers).toBe(1);
     expect("poolOptions" in config).toBe(false);
   });
+
+  it("uses the provided env for CI coverage reporters", () => {
+    expect(createVitestConfig({ env: {} }).test?.coverage?.reporter).toEqual([
+      "text",
+      "json-summary",
+    ]);
+    expect(createVitestConfig({ env: { CI: "1" } }).test?.coverage?.reporter).toEqual([
+      "text",
+      "json-summary",
+      "html",
+    ]);
+  });
 });
