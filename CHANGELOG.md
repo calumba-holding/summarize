@@ -12,6 +12,7 @@
 - Chrome extension options: keep slower process-log responses from overwriting the logs for a newly selected process.
 - Chrome extension: keep stale model discovery responses from reverting newer token results or user-selected models.
 - Chrome extension options: keep stale daemon status checks from replacing the missing-token warning after the token field is cleared.
+- Chrome extension options: show save failures instead of leaving the form stuck on Saving.
 
 ## 0.15.2 - 2026-05-17
 
