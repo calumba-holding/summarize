@@ -2,6 +2,8 @@ import { selectMarkdownForLayout } from "./slides-state";
 import { buildSummaryEmptyState } from "./summary-empty-state";
 import { linkifyTimestamps } from "./timestamp-links";
 
+const scrollRestoreVersions = new WeakMap<HTMLElement, number>();
+
 export function clearSummaryCopyButton(button: HTMLButtonElement | null | undefined) {
   if (!button) return;
   button.classList.add("hidden");
@@ -25,6 +27,32 @@ function configureCopyButton({
   button.onclick = () => {
     void copySummaryText({ text, headerSetStatus });
   };
+}
+
+function preserveHostScroll(hostEl: HTMLElement, render: () => void) {
+  const scrollEl = hostEl.closest("main") as HTMLElement | null;
+  const restoreVersion = scrollEl ? (scrollRestoreVersions.get(scrollEl) ?? 0) + 1 : 0;
+  if (scrollEl) {
+    scrollRestoreVersions.set(scrollEl, restoreVersion);
+  }
+  const previousTop = scrollEl?.scrollTop ?? 0;
+  const previousDistanceFromBottom = scrollEl
+    ? scrollEl.scrollHeight - previousTop - scrollEl.clientHeight
+    : Number.POSITIVE_INFINITY;
+  const shouldPreserve = Boolean(scrollEl) && previousTop > 0 && previousDistanceFromBottom >= 0;
+  const wasNearBottom = previousDistanceFromBottom < 32;
+
+  render();
+
+  if (!scrollEl || !shouldPreserve) return;
+
+  const restore = () => {
+    if (scrollRestoreVersions.get(scrollEl) !== restoreVersion) return;
+    const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+    scrollEl.scrollTop = wasNearBottom ? maxTop : Math.min(previousTop, maxTop);
+  };
+  restore();
+  globalThis.requestAnimationFrame?.(restore);
 }
 
 async function copySummaryText({
@@ -152,14 +180,16 @@ export function renderSummaryMarkdownDisplay({
     return;
   }
   try {
-    hostEl.innerHTML = "";
-    const markdownHost = document.createElement("div");
-    markdownHost.className = "render__markdownBody";
-    markdownHost.innerHTML = md.render(linkifyTimestamps(displayMarkdown));
-    if (copyButtonEl) {
-      configureCopyButton({ button: copyButtonEl, text: displayMarkdown, headerSetStatus });
-    }
-    hostEl.append(markdownHost);
+    preserveHostScroll(hostEl, () => {
+      hostEl.innerHTML = "";
+      const markdownHost = document.createElement("div");
+      markdownHost.className = "render__markdownBody";
+      markdownHost.innerHTML = md.render(linkifyTimestamps(displayMarkdown));
+      if (copyButtonEl) {
+        configureCopyButton({ button: copyButtonEl, text: displayMarkdown, headerSetStatus });
+      }
+      hostEl.append(markdownHost);
+    });
   } catch (err) {
     const message = err instanceof Error ? err.stack || err.message : String(err);
     headerSetStatus(`Error: ${message}`);

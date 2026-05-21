@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Chrome extension: preserve sidebar scroll position while streamed summaries rerender so loading updates do not jump readers back to the top.
 - Slides: seed planned slide timelines from transcript duration so YouTube slide summaries can start streaming before video frame extraction finishes.
 - Chrome extension: keep partial streamed slide-summary fragments from blocking the final summary, so YouTube slide cards replace transcript snippets with the same slide summaries the CLI renders.
 - Chrome extension: render slide-summary intro text above gallery cards and remove the duplicate Slides count heading so sidebar slide output matches the CLI shape.

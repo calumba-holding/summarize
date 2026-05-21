@@ -424,6 +424,75 @@ test("sidepanel updates title after stream when tab title changes", async ({
   }
 });
 
+test("sidepanel keeps scroll position while summary markdown streams", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
+
+  try {
+    await seedSettings(harness, { autoSummarize: false });
+    const page = await openExtensionPage(harness, "sidepanel.html", "#title");
+    await page.setViewportSize({ width: 430, height: 720 });
+
+    const makeMarkdown = (extraParagraphs = 0, tail = "") =>
+      Array.from(
+        { length: 90 + extraParagraphs },
+        (_, index) => `Paragraph ${index + 1}. ${"Readable streaming summary content ".repeat(12)}`,
+      ).join("\n\n") + tail;
+    const applyMarkdown = async (markdown: string) => {
+      await page.evaluate((value) => {
+        const hooks = (
+          window as typeof globalThis & {
+            __summarizeTestHooks?: { applySummaryMarkdown?: (markdown: string) => void };
+          }
+        ).__summarizeTestHooks;
+        hooks?.applySummaryMarkdown?.(value);
+      }, markdown);
+    };
+
+    await applyMarkdown(makeMarkdown());
+    await expect(page.locator(".render__markdownBody p")).toHaveCount(90);
+
+    const before = await page.evaluate(() => {
+      const main = document.querySelector("main") as HTMLElement;
+      main.scrollTop = 640;
+      return main.scrollTop;
+    });
+    expect(before).toBeGreaterThan(0);
+
+    await applyMarkdown(makeMarkdown(0, "\n\nStreaming tail."));
+
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => {
+          const main = document.querySelector("main") as HTMLElement;
+          return main.scrollTop;
+        });
+      })
+      .toBeGreaterThanOrEqual(before - 24);
+
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    await page.evaluate(() => {
+      const main = document.querySelector("main") as HTMLElement;
+      main.scrollTop = main.scrollHeight;
+    });
+    await applyMarkdown(makeMarkdown(12, "\n\nMore streaming tail."));
+    await expect
+      .poll(async () => {
+        return await page.evaluate(() => {
+          const main = document.querySelector("main") as HTMLElement;
+          return main.scrollHeight - main.scrollTop - main.clientHeight;
+        });
+      })
+      .toBeLessThan(32);
+    assertNoErrors(harness);
+  } finally {
+    await closeExtension(harness.context, harness.userDataDir);
+  }
+});
+
 test("sidepanel clears summary when tab url changes", async ({
   browserName: _browserName,
 }, testInfo) => {
