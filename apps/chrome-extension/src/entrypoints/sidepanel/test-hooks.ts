@@ -30,6 +30,7 @@ type SidepanelTestHooks = {
   applyBgMessage?: (message: BgToPanel) => void;
   applySummarySnapshot?: (payload: { run: RunStart; markdown: string }) => void;
   applySummaryMarkdown?: (markdown: string) => void;
+  applySlidesSummaryMarkdown?: (markdown: string) => void;
   forceRenderSlides?: () => void;
   showInlineError?: (message: string) => void;
   isInlineErrorVisible?: () => boolean;
@@ -61,6 +62,7 @@ export function registerSidepanelTestHooks(options: {
   applyBgMessage: (message: BgToPanel) => void;
   applySummarySnapshot: (payload: { run: RunStart; markdown: string }) => void;
   applySummaryMarkdown: (markdown: string) => void;
+  applySlidesSummaryMarkdown: (markdown: string) => void;
   forceRenderSlides: () => void;
   showInlineError: (message: string) => void;
   isInlineErrorVisible: () => boolean;
@@ -97,6 +99,7 @@ export function registerSidepanelTestHooks(options: {
   hooks.applyBgMessage = options.applyBgMessage;
   hooks.applySummarySnapshot = options.applySummarySnapshot;
   hooks.applySummaryMarkdown = options.applySummaryMarkdown;
+  hooks.applySlidesSummaryMarkdown = options.applySlidesSummaryMarkdown;
   hooks.forceRenderSlides = options.forceRenderSlides;
   hooks.showInlineError = options.showInlineError;
   hooks.isInlineErrorVisible = options.isInlineErrorVisible;

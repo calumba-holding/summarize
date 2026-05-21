@@ -47,6 +47,168 @@ describe("sidepanel slides text controller", () => {
     expect(controller.getTitles().get(1)).toBe("Canonical title");
   });
 
+  it("keeps completed slide summaries authoritative over longer main summaries", () => {
+    const controller = createSlidesTextController({
+      getSlides: () => [{ index: 1, timestamp: 2, imageUrl: "x", ocrText: null }],
+      getLengthValue: () => "short",
+      getSlidesOcrEnabled: () => true,
+    });
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        ["[slide:1]", "## Canonical title", "Concise slide-specific body."].join("\n"),
+        { source: "slides" },
+      ),
+    ).toBe(true);
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        [
+          "[slide:1]",
+          "## Longer but generic title",
+          "This is a much longer main-summary extraction that should not replace the completed slide-specific summary just because it has more characters.",
+        ].join("\n"),
+        { source: "summary" },
+      ),
+    ).toBe(false);
+
+    expect(controller.getTitles().get(1)).toBe("Canonical title");
+    expect(controller.getDescriptions().get(1)).toBe("Concise slide-specific body.");
+  });
+
+  it("does not let partial streamed slide markdown block the final summary", () => {
+    const slides = [
+      { index: 1, timestamp: 0, imageUrl: "x", ocrText: null },
+      { index: 2, timestamp: 30, imageUrl: "y", ocrText: null },
+    ];
+    const controller = createSlidesTextController({
+      getSlides: () => slides,
+      getLengthValue: () => "short",
+      getSlidesOcrEnabled: () => true,
+    });
+
+    controller.setTranscriptTimedText(
+      "[00:00] Raw transcript intro line.\n[00:30] Raw transcript second line.",
+    );
+    controller.syncTextState();
+
+    expect(
+      controller.updateSummaryFromMarkdown("[slide:1]\n##", {
+        source: "slides-partial",
+        preserveIfEmpty: true,
+      }),
+    ).toBe(false);
+    expect(controller.getDescriptions().get(1)).toContain("Raw transcript intro line");
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        [
+          "Scene intro.",
+          "",
+          "[slide:1]",
+          "## Ancient enemy returns",
+          "Delenn explains the Shadows as an ancient returning enemy.",
+          "",
+          "[slide:2]",
+          "## Kosh's hidden identity",
+          "Kosh is revealed as the remaining guardian watching for the Shadows.",
+        ].join("\n"),
+        { source: "summary" },
+      ),
+    ).toBe(true);
+
+    expect(controller.getTitles().get(1)).toBe("Ancient enemy returns");
+    expect(controller.getDescriptions().get(1)).toContain("ancient returning enemy");
+    expect(controller.getTitles().get(2)).toBe("Kosh's hidden identity");
+    expect(controller.getDescriptions().get(2)).toContain("remaining guardian");
+    expect(controller.getDescriptions().get(2)).not.toContain("Raw transcript second line");
+  });
+
+  it("allows main summary to fill missing cards after an incomplete streamed slide update", () => {
+    const slides = [
+      { index: 1, timestamp: 0, imageUrl: "x", ocrText: null },
+      { index: 2, timestamp: 30, imageUrl: "y", ocrText: null },
+    ];
+    const controller = createSlidesTextController({
+      getSlides: () => slides,
+      getLengthValue: () => "short",
+      getSlidesOcrEnabled: () => true,
+    });
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        ["[slide:1]", "## Draft title", "Draft body for one slide."].join("\n"),
+        { source: "slides-partial" },
+      ),
+    ).toBe(true);
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        [
+          "[slide:1]",
+          "## Complete title",
+          "Complete body for the first slide.",
+          "",
+          "[slide:2]",
+          "## Second title",
+          "Complete body for the second slide.",
+        ].join("\n"),
+        { source: "summary" },
+      ),
+    ).toBe(true);
+
+    expect(controller.getTitles().get(1)).toBe("Complete title");
+    expect(controller.getTitles().get(2)).toBe("Second title");
+    expect(controller.getDescriptions().get(2)).toContain("second slide");
+  });
+
+  it("allows main summary to replace equal-coverage streamed drafts even when shorter", () => {
+    const slides = [
+      { index: 1, timestamp: 0, imageUrl: "x", ocrText: null },
+      { index: 2, timestamp: 30, imageUrl: "y", ocrText: null },
+    ];
+    const controller = createSlidesTextController({
+      getSlides: () => slides,
+      getLengthValue: () => "short",
+      getSlidesOcrEnabled: () => true,
+    });
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        [
+          "[slide:1]",
+          "## Draft one",
+          "Verbose draft body that is still provisional and should not win just because it is longer.",
+          "",
+          "[slide:2]",
+          "## Draft two",
+          "Another verbose provisional draft body that is longer than the final card text.",
+        ].join("\n"),
+        { source: "slides-partial" },
+      ),
+    ).toBe(true);
+
+    expect(
+      controller.updateSummaryFromMarkdown(
+        [
+          "[slide:1]",
+          "## Ancient enemy returns",
+          "Ancient enemy returns.",
+          "",
+          "[slide:2]",
+          "## Kosh's hidden identity",
+          "Kosh remains hidden.",
+        ].join("\n"),
+        { source: "summary" },
+      ),
+    ).toBe(true);
+
+    expect(controller.getTitles().get(1)).toBe("Ancient enemy returns");
+    expect(controller.getDescriptions().get(1)).toBe("Ancient enemy returns.");
+    expect(controller.getTitles().get(2)).toBe("Kosh's hidden identity");
+    expect(controller.getDescriptions().get(2)).toBe("Kosh remains hidden.");
+  });
+
   it("upgrades transcript-first descriptions to slide summaries when summary markdown arrives", () => {
     const slides = [
       { index: 1, timestamp: 0, imageUrl: "x", ocrText: "Ignored OCR text" },

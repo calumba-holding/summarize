@@ -7,7 +7,7 @@ import {
   type SlideTextMode,
 } from "./slides-state";
 
-type SlideSummarySource = "summary" | "slides" | null;
+export type SlideSummarySource = "summary" | "slides" | "slides-partial" | null;
 
 export function createSlidesTextController(options: {
   getSlides: () => SseSlidesData["slides"] | null | undefined;
@@ -86,13 +86,15 @@ export function createSlidesTextController(options: {
       opts?: { preserveIfEmpty?: boolean; source?: Exclude<SlideSummarySource, null> },
     ) {
       const source = opts?.source ?? "summary";
-      if (source === "summary" && slideSummarySource === "slides") return false;
       const derived = deriveSlideSummaries({
         markdown,
         slides: getSlides(),
         transcriptTimedText: slidesTranscriptTimedText,
         lengthValue: options.getLengthValue(),
       });
+      if (source === "summary" && slideSummarySource === "slides") {
+        return false;
+      }
       if (!derived) {
         if (opts?.preserveIfEmpty) return false;
         slideSummaryByIndex = new Map();

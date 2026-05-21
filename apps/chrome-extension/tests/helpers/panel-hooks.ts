@@ -160,6 +160,7 @@ export async function waitForSlidesRuntimeHooks(page: Page) {
             applySlidesPayload?: (payload: unknown) => void;
             applyBgMessage?: (message: object) => void;
             applySummaryMarkdown?: (markdown: string) => void;
+            applySlidesSummaryMarkdown?: (markdown: string) => void;
             getSlidesSummaryMarkdown?: () => string;
           };
         }
@@ -168,6 +169,7 @@ export async function waitForSlidesRuntimeHooks(page: Page) {
         typeof hooks?.applySlidesPayload === "function" &&
         typeof hooks?.applyBgMessage === "function" &&
         typeof hooks?.applySummaryMarkdown === "function" &&
+        typeof hooks?.applySlidesSummaryMarkdown === "function" &&
         typeof hooks?.getSlidesSummaryMarkdown === "function"
       );
     },

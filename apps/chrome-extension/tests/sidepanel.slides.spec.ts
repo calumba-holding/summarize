@@ -203,6 +203,111 @@ test("sidepanel shows transcript-first gallery cards and hides the big summary b
   }
 });
 
+test("sidepanel replaces partial slide-stream fragments with the final slide summary", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
+
+  try {
+    await seedSettings(harness, {
+      token: "test-token",
+      autoSummarize: false,
+      slidesEnabled: true,
+      slidesParallel: true,
+      slidesOcrEnabled: true,
+      slidesLayout: "gallery",
+    });
+    const page = await openExtensionPage(harness, "sidepanel.html", "#title");
+    await waitForPanelPort(page);
+    await waitForSettingsHydratedHook(page);
+    await waitForSlidesRuntimeHooks(page);
+    await waitForTranscriptTimedTextHook(page);
+    await routePlaceholderSlideImages(page);
+
+    await sendBgMessage(harness, {
+      type: "ui:state",
+      state: buildUiState({
+        tab: {
+          id: 1,
+          url: "https://www.youtube.com/watch?v=delenn123",
+          title: "Delenn Explains",
+        },
+        media: { hasVideo: true, hasAudio: true, hasCaptions: true },
+        settings: {
+          autoSummarize: false,
+          slidesEnabled: true,
+          slidesParallel: true,
+          slidesOcrEnabled: true,
+          slidesLayout: "gallery",
+          tokenPresent: true,
+        },
+      }),
+    });
+
+    await applySlidesPayload(page, {
+      sourceUrl: "https://www.youtube.com/watch?v=delenn123",
+      sourceId: "youtube-delenn123",
+      sourceKind: "youtube",
+      ocrAvailable: false,
+      slides: [
+        { index: 1, timestamp: 3, imageUrl: "", ocrText: null },
+        { index: 2, timestamp: 47, imageUrl: "", ocrText: null },
+      ],
+    });
+    await page.evaluate(() => {
+      const hooks = (
+        window as typeof globalThis & {
+          __summarizeTestHooks?: {
+            setTranscriptTimedText?: (value: string | null) => void;
+            applySlidesSummaryMarkdown?: (markdown: string) => void;
+            forceRenderSlides?: () => number | void;
+          };
+        }
+      ).__summarizeTestHooks;
+      hooks?.setTranscriptTimedText?.(
+        "[00:03] Raw transcript line that must not remain visible.\n[00:47] More raw transcript that should be replaced.",
+      );
+      hooks?.applySlidesSummaryMarkdown?.("[slide:1]\n##");
+      hooks?.forceRenderSlides?.();
+    });
+
+    await expect
+      .poll(
+        async () => (await getPanelSlideDescriptions(page)).map(([, text]) => text).join("\n"),
+        { timeout: 10_000 },
+      )
+      .toContain("Raw transcript line");
+
+    await page.evaluate((markdown) => {
+      const hooks = (
+        window as typeof globalThis & {
+          __summarizeTestHooks?: {
+            applySummaryMarkdown?: (value: string) => void;
+            forceRenderSlides?: () => number | void;
+          };
+        }
+      ).__summarizeTestHooks;
+      hooks?.applySummaryMarkdown?.(markdown);
+      hooks?.forceRenderSlides?.();
+    }, ["A compact scene summary.", "", "[slide:1]", "## Ancient enemy returns", "Delenn explains that the Shadows are an ancient enemy returning after millennia.", "", "[slide:2]", "## Kosh's hidden identity", "Kosh is framed as the remaining guardian watching for signs of the Shadows."].join("\n"));
+
+    await expect
+      .poll(
+        async () => (await getPanelSlideDescriptions(page)).map(([, text]) => text).join("\n"),
+        { timeout: 10_000 },
+      )
+      .toContain("ancient enemy returning");
+    const slides = await getPanelSlideDescriptions(page);
+    expect(slides[0]?.[1] ?? "").not.toBe("##");
+    expect(slides.some(([, text]) => text.includes("Raw transcript"))).toBe(false);
+    expect(slides[1]?.[1] ?? "").toContain("remaining guardian");
+
+    assertNoErrors(harness);
+  } finally {
+    await closeExtension(harness.context, harness.userDataDir);
+  }
+});
+
 test("sidepanel scrolls YouTube slides and shows text for each slide", async ({
   browserName: _browserName,
 }, testInfo) => {

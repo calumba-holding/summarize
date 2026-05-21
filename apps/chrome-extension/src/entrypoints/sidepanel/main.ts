@@ -50,7 +50,7 @@ import { createSidepanelSlidesRuntime } from "./slides-runtime";
 import { shouldSeedPlannedSlidesForRun } from "./slides-seed-policy";
 import { createSlidesSessionStore } from "./slides-session-store";
 import { selectMarkdownForLayout, type SlideTextMode } from "./slides-state";
-import { createSlidesTextController } from "./slides-text-controller";
+import { createSlidesTextController, type SlideSummarySource } from "./slides-text-controller";
 import { createSlidesViewRuntime } from "./slides-view-runtime";
 import { createSummarizeControlRuntime } from "./summarize-control-runtime";
 import { createSummaryStreamRuntime } from "./summary-stream-runtime";
@@ -785,7 +785,7 @@ function setSlidesBusy(next: boolean) {
 
 function updateSlideSummaryFromMarkdown(
   markdown: string,
-  opts?: { preserveIfEmpty?: boolean; source?: "summary" | "slides" },
+  opts?: { preserveIfEmpty?: boolean; source?: Exclude<SlideSummarySource, null> },
 ) {
   slidesViewRuntime?.updateSlideSummaryFromMarkdown(markdown, opts);
 }
@@ -920,6 +920,13 @@ registerSidepanelTestHooks({
   },
   applySummaryMarkdown: (markdown) => {
     renderMarkdown(markdown);
+    setPhase("idle");
+  },
+  applySlidesSummaryMarkdown: (markdown) => {
+    updateSlideSummaryFromMarkdown(markdown, {
+      preserveIfEmpty: true,
+      source: "slides-partial",
+    });
     setPhase("idle");
   },
   forceRenderSlides: () => {

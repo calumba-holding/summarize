@@ -276,7 +276,7 @@ describe("slides summary controller", () => {
     expect(controller.getMarkdown()).toBe("Rendered summary");
     expect(updateSlideSummaryFromMarkdown).toHaveBeenCalledWith("Rendered summary", {
       preserveIfEmpty: true,
-      source: "slides",
+      source: "slides-partial",
     });
     expect(renderInlineSlidesFallback).toHaveBeenCalledOnce();
 
@@ -348,7 +348,7 @@ describe("slides summary controller", () => {
       "[slide:1]\nAlpha stale summary.",
       {
         preserveIfEmpty: true,
-        source: "slides",
+        source: "slides-partial",
       },
     );
 
@@ -357,7 +357,7 @@ describe("slides summary controller", () => {
 
     expect(updateSlideSummaryFromMarkdown).toHaveBeenCalledWith("[slide:1]\nBravo fresh summary.", {
       preserveIfEmpty: true,
-      source: "slides",
+      source: "slides-partial",
     });
     expect(updateSlideSummaryFromMarkdown).toHaveBeenLastCalledWith(
       "[slide:1]\nBravo fresh summary.",
@@ -420,7 +420,7 @@ describe("slides summary controller", () => {
     expect(controller.getComplete()).toBe(true);
     expect(updateSlideSummaryFromMarkdown).toHaveBeenCalledWith("", {
       preserveIfEmpty: true,
-      source: "slides",
+      source: "slides-partial",
     });
 
     streamOptions?.onError?.(new Error("boom"));

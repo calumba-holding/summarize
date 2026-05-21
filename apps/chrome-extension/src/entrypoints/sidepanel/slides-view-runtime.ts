@@ -10,6 +10,7 @@ import {
 } from "./slides-payload";
 import { createSlidesRenderer } from "./slides-renderer";
 import { formatSlideTimestamp } from "./slides-state";
+import type { SlideSummarySource } from "./slides-text-controller";
 import { renderSummaryMarkdownDisplay } from "./summary-renderer";
 import type { PanelPhase, PanelState, UiState } from "./types";
 
@@ -227,7 +228,7 @@ export function createSlidesViewRuntime({
 
   const updateSlideSummaryFromMarkdown = (
     markdown: string,
-    opts?: { preserveIfEmpty?: boolean; source?: "summary" | "slides" },
+    opts?: { preserveIfEmpty?: boolean; source?: Exclude<SlideSummarySource, null> },
   ) => {
     const changed = slidesTextController.updateSummaryFromMarkdown(markdown, opts);
     if (!changed) return;

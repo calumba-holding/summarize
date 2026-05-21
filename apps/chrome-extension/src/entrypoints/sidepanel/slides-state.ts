@@ -88,6 +88,13 @@ export function normalizeSlideText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function hasMeaningfulSlideSummaryText(value: string): boolean {
+  const normalized = normalizeSlideText(value);
+  if (!normalized) return false;
+  if (/^#{1,6}$/.test(normalized)) return false;
+  return true;
+}
+
 export function normalizeOcrText(raw: string | null | undefined): string {
   const text = normalizeSlideText(raw ?? "");
   if (!text) return "";
@@ -206,8 +213,8 @@ export function deriveSlideSummaries({
   for (const card of presentation.cards) {
     const title = sanitizeSlideSummaryTitle(normalizeSlideText(card.title ?? ""));
     const body = normalizeSlideText(card.body);
-    if (body) summaries.set(card.index, body);
-    if (title) titles.set(card.index, title);
+    if (hasMeaningfulSlideSummaryText(body)) summaries.set(card.index, body);
+    if (hasMeaningfulSlideSummaryText(title)) titles.set(card.index, title);
   }
   if (summaries.size === 0 && titles.size === 0) return null;
   return { summaries, titles };

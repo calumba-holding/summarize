@@ -1,5 +1,6 @@
 import { buildSlidePresentation } from "../../lib/slides-presentation";
 import { resolveSlidesLengthArg } from "./slides-state";
+import type { SlideSummarySource } from "./slides-text-controller";
 import { createStreamController } from "./stream-controller";
 import type { PanelState, RunStart, UiState } from "./types";
 
@@ -25,7 +26,7 @@ type SlidesSummaryControllerOptions = {
   clearSummarySource: () => void;
   updateSlideSummaryFromMarkdown: (
     markdown: string,
-    opts?: { preserveIfEmpty?: boolean; source?: "summary" | "slides" },
+    opts?: { preserveIfEmpty?: boolean; source?: Exclude<SlideSummarySource, null> },
   ) => void;
   renderMarkdown: (markdown: string) => void;
   renderInlineSlidesFallback: () => void;
@@ -128,7 +129,7 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
         if (options.getSlidesEnabled() && getEffectiveInputMode() === "video") {
           options.updateSlideSummaryFromMarkdown(markdown, {
             preserveIfEmpty: true,
-            source: "slides",
+            source: "slides-partial",
           });
           if (options.getPanelState().summaryMarkdown && options.getPanelState().slides) {
             options.renderInlineSlidesFallback();

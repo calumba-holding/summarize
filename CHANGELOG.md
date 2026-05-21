@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Chrome extension: keep partial streamed slide-summary fragments from blocking the final summary, so YouTube slide cards replace transcript snippets with the same slide summaries the CLI renders.
 - Release: harden npm publishing so raw `npm publish` is blocked, packed manifests reject `workspace:*`, and releases publish to `next` before exact-version smoke promotes `latest`.
 
 ## 0.16.1 - 2026-05-21
