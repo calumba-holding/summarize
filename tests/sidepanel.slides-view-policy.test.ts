@@ -25,7 +25,7 @@ describe("sidepanel slides view policy", () => {
     ).toBe("strip");
   });
 
-  it("hides the big summary block once slides are present", () => {
+  it("uses slide mode summary filtering once slides are present", () => {
     expect(
       shouldHideSummaryForSlides({
         slidesEnabled: true,

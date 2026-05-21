@@ -8,7 +8,7 @@ import {
 } from "../apps/chrome-extension/src/entrypoints/sidepanel/slides-state.js";
 
 describe("sidepanel slides state", () => {
-  it("hides the markdown summary in slide gallery mode", () => {
+  it("hides plain markdown in slide gallery mode", () => {
     expect(
       selectMarkdownForLayout({
         markdown: "# Summary\n\nBody",
@@ -18,6 +18,18 @@ describe("sidepanel slides state", () => {
         slidesLayout: "gallery",
       }),
     ).toBe("");
+  });
+
+  it("keeps the intro before slide blocks in slide gallery mode", () => {
+    expect(
+      selectMarkdownForLayout({
+        markdown: "Intro text\n\n[slide:1]\n## First\nBody",
+        slidesEnabled: true,
+        inputMode: "video",
+        hasSlides: true,
+        slidesLayout: "gallery",
+      }),
+    ).toBe("Intro text");
   });
 
   it("parses custom length values", () => {

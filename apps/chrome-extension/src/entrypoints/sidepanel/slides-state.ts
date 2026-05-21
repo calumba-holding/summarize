@@ -46,7 +46,8 @@ export function selectMarkdownForLayout({
   const trimmed = markdown.trim();
   if (!trimmed) return "";
   if (shouldHideSummaryForSlides({ slidesEnabled, inputMode, hasSlides })) {
-    return "";
+    const { summary, slides } = splitSlidesMarkdown(markdown);
+    return slides ? summary : "";
   }
   const { summary, slides } = splitSlidesMarkdown(markdown);
   if (slidesLayout === "strip" || slidesLayout === "gallery") {

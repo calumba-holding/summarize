@@ -109,7 +109,7 @@ test("sidepanel replaces placeholder slides with the final smaller payload", asy
   }
 });
 
-test("sidepanel shows transcript-first gallery cards and hides the big summary block in slide mode", async ({
+test("sidepanel shows intro before gallery cards and hides gallery heading in slide mode", async ({
   browserName: _browserName,
 }, testInfo) => {
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
@@ -191,6 +191,30 @@ test("sidepanel shows transcript-first gallery cards and hides the big summary b
     await expect(page.locator("#render")).not.toContainText(
       "Overall summary that should stay hidden in slide mode.",
     );
+
+    await page.evaluate((markdown) => {
+      const hooks = (
+        window as typeof globalThis & {
+          __summarizeTestHooks?: {
+            applySummaryMarkdown?: (value: string) => void;
+            forceRenderSlides?: () => number;
+          };
+        }
+      ).__summarizeTestHooks;
+      hooks?.applySummaryMarkdown?.(markdown);
+      hooks?.forceRenderSlides?.();
+    }, ["Intro before the first slide.", "", "[slide:1]", "## First card", "First card body.", "", "[slide:2]", "## Second card", "Second card body."].join("\n"));
+
+    await expect(page.locator(".render__markdownHost")).toContainText(
+      "Intro before the first slide.",
+    );
+    await expect(page.locator("#render")).not.toContainText("Slides (2)");
+    await expect(page.locator(".slideGallery__title")).toHaveCount(0);
+    const renderOrder = await page
+      .locator("#render")
+      .evaluate((el) => Array.from(el.children).map((child) => child.className));
+    expect(renderOrder).toEqual(["render__markdownHost", "render__slidesHost"]);
+
     await expect(
       page.locator(
         'img.slideStrip__thumbImage[data-loaded="true"], img.slideInline__thumbImage[data-loaded="true"]',

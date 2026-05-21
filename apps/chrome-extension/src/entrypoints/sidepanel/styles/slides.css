@@ -181,20 +181,6 @@
   gap: 12px;
 }
 
-.slideGallery__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.slideGallery__title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.1px;
-}
-
 .slideGallery__list {
   display: grid;
   gap: 12px;

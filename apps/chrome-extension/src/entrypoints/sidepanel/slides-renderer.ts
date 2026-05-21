@@ -245,13 +245,6 @@ export function createSlidesRenderer({
       root.className = "slideGallery";
       root.dataset.sourceId = state.slides.sourceId;
 
-      const header = document.createElement("div");
-      header.className = "slideGallery__header";
-      const title = document.createElement("div");
-      title.className = "slideGallery__title";
-      header.appendChild(title);
-      root.appendChild(header);
-
       const list = document.createElement("div");
       list.className = "slideGallery__list";
       root.appendChild(list);
@@ -259,10 +252,8 @@ export function createSlidesRenderer({
       container.prepend(root);
     }
 
-    const title = root.querySelector<HTMLDivElement>(".slideGallery__title");
     const list = root.querySelector<HTMLDivElement>(".slideGallery__list");
-    if (!title || !list) return;
-    title.textContent = `Slides (${slides.length})`;
+    if (!list) return;
 
     const existingItems = new Map<number, HTMLElement>();
     for (const item of Array.from(list.querySelectorAll<HTMLElement>(".slideGallery__item"))) {
