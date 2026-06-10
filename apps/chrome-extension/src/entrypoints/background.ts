@@ -1,12 +1,23 @@
 import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
+import { isYouTubeVideoUrl, shouldPreferUrlMode } from "@steipete/summarize-core/content/url";
 import { defineBackground } from "wxt/utils/define-background";
+import { createBrowserPanelCacheStore } from "../lib/browser-panel-cache";
 import { buildDaemonRequestBody, buildSummarizeRequestBody } from "../lib/daemon-payload";
 import { createDaemonRecovery, isDaemonUnreachableError } from "../lib/daemon-recovery";
 import { createDaemonStatusTracker } from "../lib/daemon-status";
 import { logExtensionEvent } from "../lib/extension-logs";
 import type { BgToPanel, PanelCachePayload, PanelToBg } from "../lib/panel-contracts";
 import { loadSettings, patchSettings } from "../lib/settings";
-import { canSummarizeUrl, extractFromTab, seekInTab } from "./background/content-script-bridge";
+import { runBrowserSlidesForTab, takeBrowserSlidesPayload } from "./background/browser-slides";
+import {
+  beginSlideFrameCaptureInTab,
+  canSummarizeUrl,
+  extractFromTab,
+  prepareCurrentSlideFrameInTab,
+  prepareSlideFrameInTab,
+  restoreSlideFrameInTab,
+  seekInTab,
+} from "./background/content-script-bridge";
 import { daemonHealth, daemonPing, friendlyFetchError } from "./background/daemon-client";
 import { ensureChatExtract, primeMediaHint, type CachedExtract } from "./background/extract-cache";
 import { createHoverController, type HoverToBg } from "./background/hover-controller";
@@ -34,6 +45,7 @@ import {
   type ArtifactsRequest,
   type NativeInputRequest,
 } from "./background/runtime-actions";
+import { extractYouTubeTranscriptInTab } from "./background/youtube-transcript";
 
 type BackgroundPanelSession = PanelSession<
   ReturnType<typeof createDaemonRecovery>,
@@ -48,6 +60,13 @@ export default defineBackground(() => {
   >({
     createDaemonRecovery,
     createDaemonStatus: createDaemonStatusTracker,
+    persistentPanelCache: createBrowserPanelCacheStore(),
+    shouldUsePersistentPanelCache: async (payload) => {
+      const settings = await loadSettings();
+      if (settings.slideRuntime !== "browser") return false;
+      const tab = await chrome.tabs.get(payload.tabId).catch(() => null);
+      return tab?.incognito === false;
+    },
   });
   const hoverControllersByTabId = new Map<
     number,
@@ -58,6 +77,14 @@ export default defineBackground(() => {
   // postMessage → content-script → runtime bridge.
   const nativeInputArmedTabs = new Map<number, string>();
   const artifactsArmedTabs = new Set<number>();
+  const browserSlidesInFlightByWindowId = new Map<
+    number,
+    { key: string; userInitiated: boolean }
+  >();
+  const browserSlidesRetryByWindowId = new Map<
+    number,
+    { inputMode?: "page" | "video"; reason?: string }
+  >();
 
   function resolveLogLevel(event: string) {
     const normalized = event.toLowerCase();
@@ -103,6 +130,142 @@ export default defineBackground(() => {
       resolveLogLevel,
     });
 
+  async function maybeStartBrowserSlides(
+    session: BackgroundPanelSession,
+    opts: { inputMode?: "page" | "video"; reason?: string },
+  ) {
+    const setBrowserSlidesDebug = (value: unknown) => {
+      (
+        globalThis as typeof globalThis & {
+          __summarizeBrowserSlidesLastResult?: unknown;
+        }
+      ).__summarizeBrowserSlidesLastResult = value;
+    };
+    const tab = await getActiveTab(session.windowId);
+    const tabUrl = tab?.url ?? "";
+    const inputMode =
+      opts.inputMode ?? (shouldPreferUrlMode(tabUrl) || isYouTubeVideoUrl(tabUrl) ? "video" : null);
+    const canAttemptBrowserCapture =
+      isYouTubeVideoUrl(tabUrl) || opts.inputMode === "video" || opts.reason === "slides-capture";
+    if (inputMode !== "video") {
+      return;
+    }
+    if (!canAttemptBrowserCapture) {
+      setBrowserSlidesDebug({ ok: false, error: "skipped: browser capture requires video" });
+      return;
+    }
+    const settings = await loadSettings();
+    const isUserInitiatedCapture =
+      opts.reason === "manual" ||
+      opts.reason === "refresh" ||
+      opts.reason === "length-change" ||
+      opts.reason === "slides-capture";
+    if (!isUserInitiatedCapture && opts.reason !== "cache-restore" && !settings.autoSummarize) {
+      setBrowserSlidesDebug({ ok: false, error: "skipped: auto summarize disabled" });
+      return;
+    }
+    if (!settings.slidesEnabled) {
+      setBrowserSlidesDebug({ ok: false, error: "skipped: slides disabled" });
+      return;
+    }
+    if (settings.slideRuntime !== "browser") {
+      setBrowserSlidesDebug({ ok: false, error: "skipped: daemon runtime selected" });
+      return;
+    }
+    if (!tab?.id || !canSummarizeUrl(tab.url)) {
+      setBrowserSlidesDebug({ ok: false, error: "skipped: no capturable active tab" });
+      return;
+    }
+    const cachedPanel = panelSessionStore.getPanelCache(tab.id, tab.url ?? null);
+    if (!isUserInitiatedCapture && cachedPanel?.slides?.slides?.length) {
+      setBrowserSlidesDebug({ ok: false, error: "skipped: slides already cached" });
+      return;
+    }
+    const captureKey = tab.url ?? String(tab.id);
+    const activeCaptureKey = browserSlidesInFlightByWindowId.get(session.windowId);
+    if (activeCaptureKey) {
+      if (
+        activeCaptureKey.key !== captureKey ||
+        (isUserInitiatedCapture && !activeCaptureKey.userInitiated)
+      ) {
+        browserSlidesRetryByWindowId.set(session.windowId, {
+          inputMode: opts.inputMode,
+          reason: opts.reason,
+        });
+      }
+      return;
+    }
+    browserSlidesInFlightByWindowId.set(session.windowId, {
+      key: captureKey,
+      userInitiated: isUserInitiatedCapture,
+    });
+    sendStatus(session, "Capturing slides in browser...");
+    const result = await (async () => {
+      try {
+        const transcript =
+          isYouTubeVideoUrl(tabUrl) && tab.id
+            ? await extractYouTubeTranscriptInTab(tab.id, settings.maxChars)
+            : null;
+        return await runBrowserSlidesForTab({
+          tab,
+          windowId: session.windowId,
+          beginFrameCapture: beginSlideFrameCaptureInTab,
+          prepareFrame: prepareSlideFrameInTab,
+          prepareCurrentFrame: prepareCurrentSlideFrameInTab,
+          restoreFrame: restoreSlideFrameInTab,
+          transcriptTimedText: transcript?.ok ? transcript.transcriptTimedText : null,
+          captureMode: isUserInitiatedCapture ? "seek" : "current",
+        });
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        if (browserSlidesInFlightByWindowId.get(session.windowId)?.key === captureKey) {
+          browserSlidesInFlightByWindowId.delete(session.windowId);
+        }
+      }
+    })();
+    const retry = browserSlidesRetryByWindowId.get(session.windowId) ?? null;
+    if (retry) {
+      browserSlidesRetryByWindowId.delete(session.windowId);
+    }
+    setBrowserSlidesDebug(result);
+    if (!result.ok) {
+      if (retry) {
+        void maybeStartBrowserSlides(session, retry);
+        return;
+      }
+      void send(session, { type: "slides:run", ok: false, error: result.error });
+      sendStatus(session, `Slides failed: ${result.error}`);
+      return;
+    }
+    void send(session, {
+      type: "slides:run",
+      ok: true,
+      runId: result.runId,
+      url: result.slides.sourceUrl,
+      local: true,
+    });
+    sendStatus(session, "");
+    if (retry) {
+      void maybeStartBrowserSlides(session, retry);
+    }
+  }
+
+  function summarizeActiveTabWithBrowserSlides(
+    session: BackgroundPanelSession,
+    reason: string,
+    opts?: { refresh?: boolean; inputMode?: "page" | "video" },
+  ) {
+    void summarizeActiveTab(session, reason, opts);
+    void maybeStartBrowserSlides(session, {
+      inputMode: opts?.inputMode,
+      reason,
+    });
+  }
+
   const handlePanelMessage = (session: BackgroundPanelSession, raw: PanelToBg) => {
     if (!raw || typeof raw !== "object" || typeof (raw as { type?: unknown }).type !== "string") {
       return;
@@ -120,7 +283,7 @@ export default defineBackground(() => {
             void emitState(session, "");
           },
           summarizeActiveTab: (reason) => {
-            void summarizeActiveTab(session, reason);
+            summarizeActiveTabWithBrowserSlides(session, reason);
           },
         });
         break;
@@ -130,16 +293,14 @@ export default defineBackground(() => {
             panelSessionStore.clearCachedExtractsForWindow(windowId),
         });
         break;
-      case "panel:summarize":
-        void summarizeActiveTab(
-          session,
-          (raw as { refresh?: boolean }).refresh ? "refresh" : "manual",
-          {
-            refresh: Boolean((raw as { refresh?: boolean }).refresh),
-            inputMode: (raw as { inputMode?: "page" | "video" }).inputMode,
-          },
-        );
+      case "panel:summarize": {
+        const refresh = Boolean((raw as { refresh?: boolean }).refresh);
+        summarizeActiveTabWithBrowserSlides(session, refresh ? "refresh" : "manual", {
+          refresh,
+          inputMode: (raw as { inputMode?: "page" | "video" }).inputMode,
+        });
         break;
+      }
       case "panel:cache": {
         const payload = (raw as { cache?: PanelCachePayload }).cache;
         if (!payload || typeof payload.tabId !== "number" || !payload.url) return;
@@ -151,13 +312,35 @@ export default defineBackground(() => {
         if (!payload.requestId || !payload.tabId || !payload.url) {
           return;
         }
-        const cached = panelSessionStore.getPanelCache(payload.tabId, payload.url);
-        void send(session, {
-          type: "ui:cache",
-          requestId: payload.requestId,
-          ok: Boolean(cached),
-          cache: cached ?? undefined,
-        });
+        const requestGeneration = `${session.activeSummaryRun?.run.id ?? ""}:${session.inflightUrl ?? ""}`;
+        void (async () => {
+          const cached = await panelSessionStore.getPanelCacheAsync(payload.tabId, payload.url);
+          const currentGeneration = `${session.activeSummaryRun?.run.id ?? ""}:${session.inflightUrl ?? ""}`;
+          if (currentGeneration !== requestGeneration) return;
+          const activeTab = await getActiveTab(session.windowId);
+          if (activeTab?.id !== payload.tabId || activeTab.url !== payload.url) return;
+          const activeRun = session.activeSummaryRun?.run ?? null;
+          const activeRunMatchesRequest =
+            activeRun &&
+            (activeRun.url.includes("#") || payload.url.includes("#")
+              ? activeRun.url === payload.url
+              : urlsMatch(activeRun.url, payload.url));
+          if (activeRunMatchesRequest && cached?.runId !== activeRun.id) return;
+          void send(session, {
+            type: "ui:cache",
+            requestId: payload.requestId,
+            ok: Boolean(cached),
+            cache: cached ?? undefined,
+          });
+          if (
+            cached?.summaryMarkdown &&
+            !cached.slides?.slides.length &&
+            cached.url &&
+            isYouTubeVideoUrl(cached.url)
+          ) {
+            void maybeStartBrowserSlides(session, { inputMode: "video", reason: "cache-restore" });
+          }
+        })();
         break;
       }
       case "panel:agent":
@@ -178,18 +361,57 @@ export default defineBackground(() => {
             return;
           }
 
+          const latestPanelCache = await panelSessionStore.getPanelCacheAsync(tab.id, tab.url);
+          const panelTranscript =
+            latestPanelCache?.transcriptTimedText ??
+            latestPanelCache?.slides?.transcriptTimedText ??
+            null;
+          const panelCacheText =
+            panelTranscript ??
+            latestPanelCache?.summaryMarkdown ??
+            tab.title ??
+            latestPanelCache?.url ??
+            tab.url;
           let cachedExtract: CachedExtract;
           try {
-            cachedExtract = await ensureChatExtract({
-              session,
-              tab,
-              settings,
-              panelSessionStore,
-              sendStatus: (status) => sendStatus(session, status),
-              extractFromTab,
-              fetchImpl: fetch,
-              log: logExtract(session.windowId),
-            });
+            cachedExtract =
+              settings.slideRuntime === "browser" &&
+              latestPanelCache &&
+              (panelTranscript || latestPanelCache.slides)
+                ? {
+                    url: latestPanelCache.url,
+                    title: latestPanelCache.title,
+                    text: panelCacheText,
+                    source: "url",
+                    truncated: false,
+                    totalCharacters: panelCacheText.length,
+                    wordCount: panelCacheText.split(/\s+/).filter(Boolean).length,
+                    media: {
+                      hasVideo: true,
+                      hasAudio: true,
+                      hasCaptions: Boolean(panelTranscript),
+                    },
+                    transcriptSource: panelTranscript ? "browser" : null,
+                    transcriptionProvider: null,
+                    transcriptCharacters: panelTranscript?.length ?? null,
+                    transcriptWordCount:
+                      panelTranscript?.split(/\s+/).filter(Boolean).length ?? null,
+                    transcriptLines: panelTranscript?.split(/\r?\n/).filter(Boolean).length ?? null,
+                    transcriptTimedText: panelTranscript,
+                    mediaDurationSeconds: null,
+                    slides: latestPanelCache.slides,
+                    diagnostics: null,
+                  }
+                : await ensureChatExtract({
+                    session,
+                    tab,
+                    settings,
+                    panelSessionStore,
+                    sendStatus: (status) => sendStatus(session, status),
+                    extractFromTab,
+                    fetchImpl: fetch,
+                    log: logExtract(session.windowId),
+                  });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             void send(session, { type: "run:error", message });
@@ -203,7 +425,22 @@ export default defineBackground(() => {
             tools: string[];
             summary?: string | null;
           };
-          const slidesContext = buildSlidesText(cachedExtract.slides, settings.slidesOcrEnabled);
+          const cachedExtractWithPanelSlides =
+            latestPanelCache?.slides || latestPanelCache?.transcriptTimedText
+              ? {
+                  ...cachedExtract,
+                  slides: latestPanelCache.slides ?? cachedExtract.slides,
+                  transcriptTimedText:
+                    cachedExtract.transcriptTimedText ??
+                    latestPanelCache.transcriptTimedText ??
+                    null,
+                }
+              : cachedExtract;
+          const slidesContext = buildSlidesText(
+            cachedExtractWithPanelSlides.slides,
+            settings.slidesOcrEnabled,
+            settings.length,
+          );
           await handlePanelAgentRequest({
             session,
             requestId: agentPayload.requestId,
@@ -211,7 +448,7 @@ export default defineBackground(() => {
             tools: agentPayload.tools,
             summary: agentPayload.summary,
             settings,
-            cachedExtract,
+            cachedExtract: cachedExtractWithPanelSlides,
             slidesText: slidesContext,
             send: (msg) => {
               void send(session, msg as BgToPanel);
@@ -308,7 +545,7 @@ export default defineBackground(() => {
               void emitState(session, "");
             },
             summarizeActiveTab: (reason) => {
-              void summarizeActiveTab(session, reason);
+              summarizeActiveTabWithBrowserSlides(session, reason);
             },
           });
         })();
@@ -323,7 +560,7 @@ export default defineBackground(() => {
               void emitState(session, "");
             },
             summarizeActiveTab: (reason) => {
-              void summarizeActiveTab(session, reason);
+              summarizeActiveTabWithBrowserSlides(session, reason);
             },
           });
         })();
@@ -352,6 +589,25 @@ export default defineBackground(() => {
             resolveLogLevel,
           });
         })();
+        break;
+      case "panel:slides-local": {
+        const payload = raw as { requestId?: string; runId?: string };
+        if (!payload.requestId || !payload.runId) return;
+        const slides = takeBrowserSlidesPayload(payload.runId);
+        void send(session, {
+          type: "slides:local",
+          requestId: payload.requestId,
+          ok: Boolean(slides),
+          slides: slides ?? undefined,
+          error: slides ? undefined : "Local slides payload not found",
+        });
+        break;
+      }
+      case "panel:slides-capture":
+        void maybeStartBrowserSlides(session, {
+          inputMode: "video",
+          reason: raw.manual ? "slides-capture" : "cache-restore",
+        });
         break;
       case "panel:openOptions":
         void openOptionsWindow();
@@ -403,15 +659,45 @@ export default defineBackground(() => {
       panelSessionStore.deletePanelSession(windowId);
       void panelSessionStore.clearCachedExtractsForWindow(windowId);
     },
-    runtimeActionsHandler: (raw, sender, sendResponse) =>
-      runtimeActionsHandler(raw as NativeInputRequest | ArtifactsRequest, sender, sendResponse),
+    runtimeActionsHandler: (raw, sender, sendResponse) => {
+      if (
+        raw &&
+        typeof raw === "object" &&
+        (raw as { type?: unknown }).type === "browser-cache:stats"
+      ) {
+        void panelSessionStore.getPersistentPanelCacheStats().then((stats) => {
+          sendResponse({ ok: Boolean(stats), stats });
+        });
+        return true;
+      }
+      if (
+        raw &&
+        typeof raw === "object" &&
+        (raw as { type?: unknown }).type === "browser-cache:clear"
+      ) {
+        void panelSessionStore.clearPersistentPanelCache().then((stats) => {
+          if (stats) {
+            for (const panelSession of panelSessionStore.getPanelSessions()) {
+              void send(panelSession, { type: "ui:cache-cleared" });
+            }
+          }
+          sendResponse({ ok: Boolean(stats), stats });
+        });
+        return true;
+      }
+      return runtimeActionsHandler(
+        raw as NativeInputRequest | ArtifactsRequest,
+        sender,
+        sendResponse,
+      );
+    },
     hoverRuntimeHandler: (raw, sender, sendResponse) =>
       hoverController.handleRuntimeMessage(raw as HoverToBg, sender, sendResponse),
     emitState: (session, status) => {
       void emitState(session, status);
     },
     summarizeActiveTab: (session, reason) => {
-      void summarizeActiveTab(session, reason);
+      summarizeActiveTabWithBrowserSlides(session, reason);
     },
     onTabRemoved: (tabId) => {
       hoverController.abortHoverForTab(tabId);
