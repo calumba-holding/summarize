@@ -79,17 +79,25 @@ export async function refreshYoutubeSourceMetrics({
   if (!resolvedVideoId) return;
 
   const htmlPlayerMetadata = urlVideoId ? extractYoutubePlayerMetadata(html) : null;
+  const existingMetricsForVideo =
+    existingMetrics?.videoId === resolvedVideoId ? existingMetrics : null;
   let sourceMetrics =
-    htmlPlayerMetadata && urlVideoId
+    htmlPlayerMetadata && urlVideoId && htmlPlayerMetadata.viewCount !== null
       ? {
           platform: "youtube" as const,
           videoId: urlVideoId,
           viewCount: htmlPlayerMetadata.viewCount,
           observedAt: new Date(startedAtMs).toISOString(),
         }
-      : existingMetrics?.videoId === resolvedVideoId
-        ? existingMetrics
-        : null;
+      : (existingMetricsForVideo ??
+        (htmlPlayerMetadata && urlVideoId
+          ? {
+              platform: "youtube" as const,
+              videoId: urlVideoId,
+              viewCount: null,
+              observedAt: new Date(startedAtMs).toISOString(),
+            }
+          : null));
   const observedTime = sourceMetrics ? Date.parse(sourceMetrics.observedAt) : Number.NaN;
   const metricsAreStale =
     !Number.isFinite(observedTime) || Date.now() - observedTime >= SOURCE_METRICS_TTL_MS;

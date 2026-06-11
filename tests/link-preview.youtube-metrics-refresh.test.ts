@@ -175,6 +175,54 @@ describe("YouTube source metric refresh", () => {
     });
   });
 
+  it("preserves a cached count when count-less HTML fallbacks fail", async () => {
+    const observedAt = "2026-06-01T00:00:00.000Z";
+    resolveTranscriptForLink.mockResolvedValue({
+      text: "cached transcript",
+      source: "captionTracks",
+      metadata: {
+        sourceMetrics: {
+          platform: "youtube",
+          videoId: "abcdefghijk",
+          viewCount: 24,
+          observedAt,
+        },
+      },
+      diagnostics: { cacheStatus: "hit" },
+    });
+    extractYoutubePlayerMetadata.mockReturnValue({
+      durationSeconds: 60,
+      viewCount: null,
+    });
+
+    const result = await buildResultFromHtmlDocument({
+      url: "https://www.youtube.com/watch?v=abcdefghijk",
+      html: "<!doctype html><html><head><title>Video</title></head><body></body></html>",
+      cacheMode: "default",
+      maxCharacters: null,
+      youtubeTranscriptMode: "web",
+      mediaTranscriptMode: "auto",
+      firecrawlDiagnostics: {
+        attempted: false,
+        used: false,
+        cacheMode: "default",
+        cacheStatus: "bypassed",
+        notes: null,
+      },
+      markdownRequested: false,
+      markdownMode: "off",
+      timeoutMs: 2_000,
+      deps: { fetch: vi.fn(), ytDlpPath: null } as never,
+      readabilityCandidate: null,
+    });
+
+    expect(result.sourceMetrics).toMatchObject({
+      videoId: "abcdefghijk",
+      viewCount: 24,
+      observedAt,
+    });
+  });
+
   it("does not refresh a fresh unavailable observation from the transcript cache", async () => {
     const observedAt = new Date().toISOString();
     resolveTranscriptForLink.mockResolvedValue({
