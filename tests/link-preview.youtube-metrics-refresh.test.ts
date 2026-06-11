@@ -223,7 +223,7 @@ describe("YouTube source metric refresh", () => {
     });
   });
 
-  it("does not refresh a fresh unavailable observation from the transcript cache", async () => {
+  it("does not refresh a fresh unavailable observation when HTML also reports unavailable", async () => {
     const observedAt = new Date().toISOString();
     resolveTranscriptForLink.mockResolvedValue({
       text: "cached transcript",
@@ -237,6 +237,10 @@ describe("YouTube source metric refresh", () => {
         },
       },
       diagnostics: { cacheStatus: "hit" },
+    });
+    extractYoutubePlayerMetadata.mockReturnValue({
+      durationSeconds: 60,
+      viewCount: null,
     });
 
     const result = await buildResultFromHtmlDocument({

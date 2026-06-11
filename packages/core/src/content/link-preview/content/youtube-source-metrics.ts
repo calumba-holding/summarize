@@ -98,12 +98,15 @@ export async function refreshYoutubeSourceMetrics({
               observedAt: new Date(startedAtMs).toISOString(),
             }
           : null));
-  const observedTime = sourceMetrics ? Date.parse(sourceMetrics.observedAt) : Number.NaN;
-  const metricsAreStale =
-    !Number.isFinite(observedTime) || Date.now() - observedTime >= SOURCE_METRICS_TTL_MS;
-  const shouldRefresh =
-    htmlPlayerMetadata?.viewCount === null ||
-    (htmlPlayerMetadata === null && (sourceMetrics === null || metricsAreStale));
+  const existingObservedTime = existingMetricsForVideo
+    ? Date.parse(existingMetricsForVideo.observedAt)
+    : Number.NaN;
+  const existingMetricsAreFresh =
+    existingMetricsForVideo !== null &&
+    Number.isFinite(existingObservedTime) &&
+    Date.now() - existingObservedTime < SOURCE_METRICS_TTL_MS;
+  const htmlHasViewCount = typeof htmlPlayerMetadata?.viewCount === "number";
+  const shouldRefresh = !htmlHasViewCount && !existingMetricsAreFresh;
   const remainingTimeoutMs = remainingMetricsMs();
 
   if (shouldRefresh && remainingTimeoutMs > 0) {
