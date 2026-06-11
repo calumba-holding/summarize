@@ -113,7 +113,11 @@ export const resolveTranscriptForLink = async (
       ? cachedSourceMetricsRecord.videoId
       : null;
   const embeddedVideoIdentityMismatch = Boolean(
-    cacheOutcome.cached && embeddedYoutubeUrl && resourceKey && cachedVideoId !== resourceKey,
+    cacheOutcome.cached &&
+    embeddedYoutubeUrl &&
+    resourceKey &&
+    cachedVideoId &&
+    cachedVideoId !== resourceKey,
   );
 
   if (cacheOutcome.resolution && !embeddedVideoIdentityMismatch) {
@@ -126,7 +130,7 @@ export const resolveTranscriptForLink = async (
     diagnostics.cacheStatus = "miss";
     diagnostics.notes = appendNote(
       diagnostics.notes,
-      "Cached transcript ignored because the embedded YouTube video changed or was not recorded",
+      "Cached transcript ignored because the embedded YouTube video changed",
     );
   }
 
