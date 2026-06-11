@@ -253,6 +253,19 @@ describe("speaker identification", () => {
     expect(evidence.join("\n")).toContain("Later self-identification clue");
   });
 
+  it("caps normalized evidence after scanning collapsible whitespace", () => {
+    const evidence = buildSpeakerEvidence([
+      {
+        startMs: 0,
+        endMs: 1_000,
+        text: `Introduction${" ".repeat(30_000)}I am Alice`,
+        speaker: "Speaker 1",
+      },
+    ]);
+
+    expect(evidence.join("\n")).toContain("Introduction I am Alice");
+  });
+
   it("resumes a partially selected evidence chunk", () => {
     const evidence = buildSpeakerEvidence([
       {

@@ -6,6 +6,7 @@ import type { LlmTokenUsage } from "../llm/types.js";
 import type { SpeakerIdentificationSettings } from "./types.js";
 
 const MAX_EVIDENCE_CHARACTERS = 24_000;
+const MAX_EVIDENCE_RAW_SCAN_CHARACTERS = 240_000;
 const MAX_EVIDENCE_LINE_CHARACTERS = 4_000;
 const MAX_EVIDENCE_SPEAKER_CHARACTERS = 160;
 const MAX_EVIDENCE_SPEAKERS = 64;
@@ -20,7 +21,6 @@ type EvidenceCursor = {
   text: string;
   rawOffset: number;
   rawEnd: number;
-  pendingWhitespace: boolean;
   part: number;
 };
 
@@ -77,7 +77,8 @@ export function buildSpeakerEvidence(segments: TranscriptSegment[]): string[] {
   const bySpeaker = new Map<string, EvidenceCursor[]>();
   for (const [order, segment] of selectEvidenceSegments(segments).entries()) {
     const rawSpeaker = rawEvidenceSpeaker(segment.speaker);
-    if (!rawSpeaker || segment.text.length === 0) continue;
+    const text = normalizeEvidenceText(segment.text);
+    if (!rawSpeaker || text.length === 0) continue;
     let cursors = bySpeaker.get(rawSpeaker);
     if (!cursors) {
       if (bySpeaker.size >= MAX_EVIDENCE_SPEAKERS) continue;
@@ -88,10 +89,9 @@ export function buildSpeakerEvidence(segments: TranscriptSegment[]): string[] {
       order,
       startMs: segment.startMs,
       speaker: formatEvidenceSpeaker(rawSpeaker, [...bySpeaker.keys()].indexOf(rawSpeaker) + 1),
-      text: segment.text,
+      text,
       rawOffset: 0,
-      rawEnd: Math.min(segment.text.length, MAX_EVIDENCE_CHARACTERS),
-      pendingWhitespace: false,
+      rawEnd: text.length,
       part: 0,
     });
   }
@@ -141,6 +141,27 @@ function formatEvidenceSpeaker(value: string, ordinal: number): string {
   return `${prefix}${encoded}${truncated ? "..." : ""}`;
 }
 
+function normalizeEvidenceText(value: string): string {
+  let output = "";
+  let pendingWhitespace = false;
+  const scanEnd = Math.min(value.length, MAX_EVIDENCE_RAW_SCAN_CHARACTERS);
+  for (let index = 0; index < scanEnd && output.length < MAX_EVIDENCE_CHARACTERS; index += 1) {
+    const character = value[index];
+    if (!character) break;
+    if (WHITESPACE_CHARACTER.test(character)) {
+      pendingWhitespace = output.length > 0;
+      continue;
+    }
+    if (pendingWhitespace) {
+      if (output.length + 1 >= MAX_EVIDENCE_CHARACTERS) break;
+      output += " ";
+      pendingWhitespace = false;
+    }
+    output += character;
+  }
+  return output;
+}
+
 function takeEvidenceLine(
   state: EvidenceSpeakerState,
   maxCharacters: number,
@@ -167,23 +188,9 @@ function takeEvidenceLine(
 }
 
 function takeNormalizedEvidenceText(cursor: EvidenceCursor, maxCharacters: number): string {
-  let output = "";
-  while (cursor.rawOffset < cursor.rawEnd && output.length < maxCharacters) {
-    const character = cursor.text[cursor.rawOffset];
-    if (!character) break;
-    if (WHITESPACE_CHARACTER.test(character)) {
-      cursor.rawOffset += 1;
-      cursor.pendingWhitespace = true;
-      continue;
-    }
-    if (cursor.pendingWhitespace && output.length > 0) {
-      if (output.length + 1 >= maxCharacters) break;
-      output += " ";
-    }
-    cursor.pendingWhitespace = false;
-    output += character;
-    cursor.rawOffset += 1;
-  }
+  const end = Math.min(cursor.rawEnd, cursor.rawOffset + maxCharacters);
+  const output = cursor.text.slice(cursor.rawOffset, end);
+  cursor.rawOffset = end;
   return output;
 }
 

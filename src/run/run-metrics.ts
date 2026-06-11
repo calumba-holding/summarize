@@ -30,10 +30,7 @@ export type RunMetrics = {
 
 function explicitCallCostUsd(call: LlmCall): number | null {
   if (typeof call.costUsd === "number" && Number.isFinite(call.costUsd)) return call.costUsd;
-  return call.provider === "ollama" ||
-    (typeof call.model === "string" && /:free$/i.test(call.model.trim()))
-    ? 0
-    : null;
+  return null;
 }
 
 export function createRunMetrics({

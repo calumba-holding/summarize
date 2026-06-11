@@ -37,7 +37,7 @@ describe("run metrics cost estimation", () => {
     }
   });
 
-  it("keeps local Ollama calls at zero when usage is unavailable", async () => {
+  it("keeps Ollama calls unknown without an explicit verified cost", async () => {
     const home = mkdtempSync(join(tmpdir(), "summarize-run-metrics-"));
     try {
       const metrics = createRunMetrics({
@@ -53,13 +53,13 @@ describe("run metrics cost estimation", () => {
       });
       metrics.setTranscriptionCost(0.4, "$0.40 tx");
 
-      await expect(metrics.estimateCostUsd()).resolves.toBe(0.4);
+      await expect(metrics.estimateCostUsd()).resolves.toBeNull();
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
   });
 
-  it("keeps OpenRouter free-model calls at zero when usage is unavailable", async () => {
+  it("uses an explicit verified zero cost for free-model calls", async () => {
     const home = mkdtempSync(join(tmpdir(), "summarize-run-metrics-"));
     try {
       const metrics = createRunMetrics({
@@ -71,6 +71,7 @@ describe("run metrics cost estimation", () => {
         provider: "openai",
         model: "openai/xiaomi/mimo-v2-flash:free",
         usage: null,
+        costUsd: 0,
         purpose: "summary",
       });
       metrics.setTranscriptionCost(0.4, "$0.40 tx");
@@ -89,6 +90,7 @@ describe("run metrics cost estimation", () => {
           provider: "ollama",
           model: "ollama/llama3.2",
           usage: null,
+          costUsd: 0,
           purpose: "summary",
         },
         {
