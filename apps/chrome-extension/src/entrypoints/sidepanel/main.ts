@@ -1,19 +1,12 @@
 import type { BgToPanel } from "../../lib/panel-contracts";
-import {
-  defaultSettings,
-  loadSettings,
-  patchSettings,
-  type SlidesLayout,
-} from "../../lib/settings";
+import { defaultSettings, loadSettings, patchSettings } from "../../lib/settings";
 import { generateToken } from "../../lib/token";
 import { createAppearanceControls } from "./appearance-controls";
-import { createSidepanelBgMessageRuntime } from "./bg-message-runtime";
 import { bindSidepanelUiEvents } from "./bindings";
 import { bootstrapSidepanel } from "./bootstrap-runtime";
 import { createSidepanelDom } from "./dom";
 import { createSidepanelInteractionRuntime } from "./interaction-runtime";
 import { createMetricsController } from "./metrics-controller";
-import type { PanelCachePayload } from "./panel-cache";
 import { createPanelMessagingRuntime } from "./panel-messaging";
 import { createPanelStateStore } from "./panel-state-store";
 import { createSidepanelPresentationRuntime } from "./presentation-runtime";
@@ -23,10 +16,9 @@ import { createSidepanelSessionRuntime } from "./session-runtime";
 import { createSetupControlsRuntime } from "./setup-controls-runtime";
 import { friendlyFetchError } from "./setup-runtime";
 import { resolveSlidesInputMode } from "./slides-session-state";
+import { createSidepanelStateEffectsRuntime } from "./state-effects-runtime";
 import { registerSidepanelTestHooks } from "./test-hooks";
-import type { UiState } from "./types";
 import { createTypographyController } from "./typography-controller";
-import { createUiStateRuntime } from "./ui-state-runtime";
 
 const dom = createSidepanelDom();
 const {
@@ -97,7 +89,7 @@ const panelMessagingRuntime = createPanelMessagingRuntime({
     handleBgMessage(msg);
   },
 });
-const { handleLocalSlidesResponse, resolveLocalSlides, send } = panelMessagingRuntime;
+const { resolveLocalSlides, send } = panelMessagingRuntime;
 
 const LINE_HEIGHT_STEP = 0.1;
 
@@ -130,55 +122,24 @@ const presentationRuntime = createSidepanelPresentationRuntime({
   send,
 });
 const {
-  isStreaming,
   panelCacheController,
-  feedback: {
-    bindActions: bindFeedbackActions,
-    errorController,
-    headerController,
-    hideSlideNotice,
-    showSlideNotice,
-  },
+  feedback: { bindActions: bindFeedbackActions, errorController, headerController },
   phase: { setPhase },
   summary: { renderMarkdown, sendSummarize },
   slides: {
     applySlidesPayload,
     controlRuntime: summarizeControlRuntime,
     refreshSummarizeControl,
-    renderInlineSlides,
-    runtime: slidesRuntime,
     setSlidesTranscriptTimedText,
     textController: slidesTextController,
     updateSlideSummaryFromMarkdown,
     viewRuntime: slidesViewRuntime,
   },
 } = presentationRuntime;
-const {
-  maybeApplyPendingSlidesSummary,
-  maybeStartPendingSlidesForUrl,
-  rememberPendingSlidesRun,
-  resolveActiveSlidesRunId,
-  startSlidesStreamForRunId,
-  startSlidesSummaryStreamForRunId,
-} = slidesRuntime;
-const {
-  queueSlidesRender,
-  rebuildSlideDescriptions,
-  renderMarkdownDisplay,
-  setSlidesBusy,
-  updateSlidesTextState,
-} = slidesViewRuntime;
+const { queueSlidesRender, renderMarkdownDisplay, updateSlidesTextState } = slidesViewRuntime;
 const { applySlidesLayout, setSlidesLayout } = summarizeControlRuntime;
 
-const {
-  applyPanelCache,
-  bindRunActions,
-  chatRuntime,
-  clearCurrentView,
-  navigationRuntime,
-  resetPanelView,
-  syncWithActiveTab,
-} = createSidepanelSessionRuntime({
+const sessionRuntime = createSidepanelSessionRuntime({
   dom,
   panelState,
   dispatchPanelState: panelStateStore.dispatch,
@@ -186,25 +147,76 @@ const {
   presentationRuntime,
   send,
 });
+const { bindRunActions, chatRuntime, clearCurrentView, navigationRuntime, syncWithActiveTab } =
+  sessionRuntime;
 
-const { autoSummarizeRuntime, plannedSlidesRuntime, streamController, summaryRunRuntime } =
-  createSidepanelRunRuntime({
-    panelState,
-    dispatchPanelState: panelStateStore.dispatch,
-    getActiveTabId,
-    getActiveTabUrl,
-    appearanceControls,
-    chatRuntime,
-    navigationRuntime,
-    metricsController,
-    headerController,
-    panelCacheController,
-    presentationRuntime,
-    send,
-    syncWithActiveTab,
-  });
+const runRuntime = createSidepanelRunRuntime({
+  panelState,
+  dispatchPanelState: panelStateStore.dispatch,
+  getActiveTabId,
+  getActiveTabUrl,
+  appearanceControls,
+  chatRuntime,
+  navigationRuntime,
+  metricsController,
+  headerController,
+  panelCacheController,
+  presentationRuntime,
+  send,
+  syncWithActiveTab,
+});
+const { autoSummarizeRuntime, streamController, summaryRunRuntime } = runRuntime;
 
 bindRunActions({ abortSummaryStream: streamController.abort });
+
+const setupControlsRuntime = createSetupControlsRuntime({
+  advancedSettingsBodyEl,
+  advancedSettingsEl,
+  defaultModel: defaultSettings.model,
+  drawerEl,
+  drawerToggleBtn,
+  friendlyFetchError,
+  generateToken,
+  getStatusResetText: () => panelState.ui?.status ?? "",
+  headerSetStatus: (text) => {
+    headerController.setStatus(text);
+  },
+  loadSettings,
+  modelCustomEl,
+  modelPresetEl,
+  modelRefreshBtn,
+  modelRowEl,
+  modelStatusEl,
+  patchSettings,
+  setupEl,
+});
+const {
+  drawerControls,
+  readCurrentModelValue,
+  refreshModelsIfStale,
+  runRefreshFree,
+  setDefaultModelPresets,
+  setModelPlaceholderFromDiscovery,
+  setModelValue,
+  updateModelRowUI,
+} = setupControlsRuntime;
+
+const stateEffectsRuntime = createSidepanelStateEffectsRuntime({
+  dom,
+  panelState,
+  dispatchPanelState: panelStateStore.dispatch,
+  appearanceControls,
+  typographyController,
+  panelMessagingRuntime,
+  presentationRuntime,
+  runRuntime,
+  sessionRuntime,
+  setupControlsRuntime,
+});
+
+function handleBgMessage(msg: BgToPanel) {
+  stateEffectsRuntime.handleBgMessage(msg);
+}
 
 registerSidepanelTestHooks({
   applySlidesPayload,
@@ -250,14 +262,10 @@ registerSidepanelTestHooks({
   },
   applyUiState: (state) => {
     panelStateStore.dispatch({ type: "ui", ui: state });
-    updateControls(state);
+    stateEffectsRuntime.applyUiState(state);
   },
-  applyBgMessage: (message) => {
-    handleBgMessage(message);
-  },
-  applySummarySnapshot: (payload) => {
-    summaryRunRuntime.applySnapshot(payload);
-  },
+  applyBgMessage: handleBgMessage,
+  applySummarySnapshot: summaryRunRuntime.applySnapshot,
   applySummaryMarkdown: (markdown) => {
     renderMarkdown(markdown);
     setPhase("idle");
@@ -277,163 +285,10 @@ registerSidepanelTestHooks({
     });
     return slidesViewRuntime.slidesRenderer.forceRender();
   },
-  showInlineError: (message) => {
-    errorController.showInlineError(message);
-  },
+  showInlineError: errorController.showInlineError,
   isInlineErrorVisible: () => !inlineErrorEl.classList.contains("hidden"),
   getInlineErrorMessage: () => inlineErrorMessageEl.textContent ?? "",
 });
-
-const setupControlsRuntime = createSetupControlsRuntime({
-  advancedSettingsBodyEl,
-  advancedSettingsEl,
-  defaultModel: defaultSettings.model,
-  drawerEl,
-  drawerToggleBtn,
-  friendlyFetchError,
-  generateToken,
-  getStatusResetText: () => panelState.ui?.status ?? "",
-  headerSetStatus: (text) => {
-    headerController.setStatus(text);
-  },
-  loadSettings,
-  modelCustomEl,
-  modelPresetEl,
-  modelRefreshBtn,
-  modelRowEl,
-  modelStatusEl,
-  patchSettings,
-  setupEl,
-});
-const {
-  drawerControls,
-  isRefreshFreeRunning,
-  maybeShowSetup,
-  readCurrentModelValue,
-  refreshModelsIfStale,
-  runRefreshFree,
-  setDefaultModelPresets,
-  setModelPlaceholderFromDiscovery,
-  setModelValue,
-  updateModelRowUI,
-} = setupControlsRuntime;
-
-const uiStateRuntime = createUiStateRuntime({
-  panelState,
-  dispatchPanelState: panelStateStore.dispatch,
-  appearanceControls,
-  typographyController,
-  navigationRuntime,
-  panelCacheController,
-  headerController,
-  clearInlineError: () => {
-    errorController.clearInlineError();
-  },
-  requestAgentAbort: chatRuntime.requestAbort,
-  clearChatHistoryForActiveTab: chatRuntime.clearHistoryForActiveTab,
-  migrateChatHistory: chatRuntime.migrateHistory,
-  maybeStartPendingSummaryRunForUrl: summaryRunRuntime.maybeStartPendingForUrl,
-  maybeStartPendingSlidesForUrl,
-  requestSlidesCapture: () => {
-    void send({ type: "panel:slides-capture" });
-  },
-  resolveActiveSlidesRunId,
-  applyPanelCache,
-  resetSummaryView: resetPanelView,
-  abortSummaryStream: () => {
-    streamController.abort();
-  },
-  hideAutomationNotice: chatRuntime.hideAutomationNotice,
-  hideSlideNotice,
-  maybeApplyPendingSlidesSummary,
-  applyChatEnabled: chatRuntime.applyEnabled,
-  restoreChatHistory: chatRuntime.restoreHistory,
-  rebuildSlideDescriptions,
-  renderInlineSlides,
-  setSlidesLayout: (value) => {
-    setSlidesLayout(value as SlidesLayout);
-  },
-  maybeSeedPlannedSlidesForPendingRun: plannedSlidesRuntime.maybeSeedPendingRun,
-  refreshSummarizeControl,
-  maybeShowSetup,
-  setPhase,
-  renderMarkdownDisplay,
-  readCurrentModelValue,
-  setModelValue,
-  updateModelRowUI,
-  isRefreshFreeRunning,
-  setModelRefreshDisabled: (value) => {
-    modelRefreshBtn.disabled = value;
-  },
-  renderMarkdownHostEl,
-  isStreaming,
-  onSlidesOcrChanged: updateSlidesTextState,
-});
-
-function updateControls(state: UiState) {
-  uiStateRuntime.apply(state);
-}
-
-const bgMessageRuntime = createSidepanelBgMessageRuntime({
-  panelState,
-  dispatchPanelState: panelStateStore.dispatch,
-  applyUiState: updateControls,
-  setStatus: (text) => {
-    headerController.setStatus(text);
-  },
-  isStreaming,
-  setPhase,
-  finishStreamingMessage: chatRuntime.finishStreamingMessage,
-  setSlidesBusy,
-  showSlideNotice,
-  getActiveTabUrl,
-  rememberPendingSlidesRun: (value) => {
-    rememberPendingSlidesRun(value);
-  },
-  startSlidesStreamForRunId,
-  startSlidesSummaryStreamForRunId: (runId, url) => {
-    startSlidesSummaryStreamForRunId(runId, url ?? null);
-  },
-  handleSlidesLocal: handleLocalSlidesResponse,
-  getSlidesContextRequestId: () => getSlidesState().slidesContextRequestId,
-  setSlidesContextPending: (value) => {
-    updateSlidesState({ slidesContextPending: value });
-  },
-  setSlidesTranscriptTimedText,
-  updateSlidesTextState,
-  updateSlideSummaryFromMarkdown,
-  renderInlineSlidesFallback: () => {
-    renderInlineSlides(renderMarkdownHostEl, { fallback: true });
-  },
-  schedulePanelCacheSync: () => {
-    panelCacheController.scheduleSync();
-  },
-  consumeUiCache: (cacheMessage) => panelCacheController.consumeResponse(cacheMessage),
-  clearPanelCache: () => {
-    panelCacheController.clear();
-  },
-  getActiveTabId,
-  applyPanelCache: (cache, opts) => {
-    applyPanelCache(cache as PanelCachePayload, opts);
-  },
-  rememberPendingSummaryRun: (run) => {
-    summaryRunRuntime.rememberPendingRun(run);
-  },
-  rememberPendingSummarySnapshot: (payload) => {
-    summaryRunRuntime.rememberPendingSnapshot(payload);
-  },
-  attachSummaryRun: summaryRunRuntime.attachRun,
-  applySummarySnapshot: (payload) => {
-    summaryRunRuntime.applySnapshot(payload);
-  },
-  handleChatHistory: chatRuntime.handleHistory,
-  handleAgentChunk: chatRuntime.handleAgentChunk,
-  handleAgentResponse: chatRuntime.handleAgentResponse,
-});
-
-function handleBgMessage(msg: BgToPanel) {
-  bgMessageRuntime.handle(msg);
-}
 
 const interactionRuntime = createSidepanelInteractionRuntime({
   chatEnabled: () => getPanelSession().chatEnabled,
