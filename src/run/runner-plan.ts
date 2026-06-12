@@ -17,7 +17,6 @@ import {
 import { createCliSummarizeResolution } from "./cli-summarize-request.js";
 import { parseCliProviderArg } from "./env.js";
 import { isPdfExtension, isTranscribableExtension } from "./flows/asset/input.js";
-import { summarizeMediaFile as summarizeMediaFileImpl } from "./flows/asset/media.js";
 import { writeVerbose } from "./logging.js";
 import { createMediaCacheFromConfig } from "./media-cache-state.js";
 import type { PerfTrace } from "./perf-trace.js";
@@ -380,7 +379,7 @@ export async function createRunnerPlan(options: {
   });
   const assetInputContext = createRunnerAssetInputContext({
     summarizeAssetImpl: resolvedAsset.summarize,
-    summarizeMediaFileImpl,
+    summarizeMediaFileImpl: resolvedAsset.media,
     assetSummaryContext,
     progressEnabled,
     trackedFetch,

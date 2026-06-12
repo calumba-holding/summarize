@@ -130,7 +130,7 @@ describe("run flow contexts", () => {
     await inputContext.summarizeMediaFile?.(args);
     await inputContext.summarizeAsset(args);
 
-    expect(summarizeMediaFileImpl).toHaveBeenCalledWith(assetSummaryContext, args);
+    expect(summarizeMediaFileImpl).toHaveBeenCalledWith(args);
     expect(summarizeAssetImpl).toHaveBeenCalledWith(args);
     expect(inputContext.progressEnabled).toBe(true);
   });

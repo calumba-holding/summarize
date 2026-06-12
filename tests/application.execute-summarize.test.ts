@@ -8,6 +8,7 @@ import { createEmptyRunOverrides } from "../src/run/run-settings.js";
 const mocks = vi.hoisted(() => ({
   extractAssetContent: vi.fn(),
   executeAssetSummary: vi.fn(),
+  executeMediaFile: vi.fn(),
   executeUrlFlow: vi.fn(),
 }));
 
@@ -17,6 +18,10 @@ vi.mock("../src/run/flows/asset/extract.js", () => ({
 vi.mock("../src/run/flows/asset/summary.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/run/flows/asset/summary.js")>()),
   executeAssetSummary: mocks.executeAssetSummary,
+}));
+vi.mock("../src/run/flows/asset/media.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/run/flows/asset/media.js")>()),
+  executeMediaFile: mocks.executeMediaFile,
 }));
 vi.mock("../src/run/flows/url/flow.js", () => ({
   executeUrlFlow: mocks.executeUrlFlow,
@@ -486,6 +491,145 @@ describe("executeSummarize", () => {
       },
     });
     expect(events[0]?.input).not.toHaveProperty("attachment");
+    expect(events.at(-1)?.type).toBe("run-completed");
+  });
+
+  it("executes resolved media with byte-free result metadata", async () => {
+    mocks.executeMediaFile.mockImplementationOnce(async (_ctx, args) => {
+      args.onModelChosen?.("openai/gpt-5.4");
+      return {
+        kind: "summary",
+        extracted,
+        summaryArgs: {
+          sourceKind: "file",
+          sourceLabel: `${args.sourceLabel} (transcript)`,
+          attachment: {
+            kind: "file",
+            mediaType: "text/plain",
+            filename: "audio.mp3.transcript.txt",
+          },
+        },
+        summary: {
+          kind: "summary",
+          outcome: "model",
+          summary: "Media summary.",
+          summaryEmitted: false,
+          summaryFromCache: false,
+          prompt: "Prompt",
+          extracted: {
+            kind: "asset",
+            source: `${args.sourceLabel} (transcript)`,
+            mediaType: "text/plain",
+            filename: "audio.mp3.transcript.txt",
+          },
+          footerParts: [],
+          llm: {
+            provider: "openai",
+            model: "openai/gpt-5.4",
+            maxCompletionTokens: 256,
+            strategy: "single",
+          },
+        },
+      };
+    });
+    const assetSummaryContext = {
+      onSummaryCached: null,
+      buildReport: vi.fn(async () => ({
+        llm: [],
+        services: { firecrawl: { requests: 0 }, apify: { requests: 0 } },
+      })),
+      estimateCostUsd: vi.fn(async () => 0.03),
+    };
+    const preparedContext = {
+      hooks: {
+        onModelChosen: null,
+        onExtracted: null,
+        onSlidesExtracted: null,
+        onSlidesProgress: null,
+        onSlidesDone: null,
+        onSlideChunk: undefined,
+        onLinkPreviewProgress: null,
+        onSummaryCached: null,
+        summarizeAsset: vi.fn(),
+      },
+    } as unknown as UrlFlowContext;
+    const attachment = {
+      kind: "file" as const,
+      mediaType: "audio/mpeg",
+      filename: "audio.mp3",
+      bytes: new Uint8Array(),
+    };
+    const events: Array<{ type: string; input?: unknown; text?: string }> = [];
+
+    const result = await executeSummarize(
+      {
+        input: {
+          kind: "resolved-media",
+          sourceKind: "file",
+          sourceLabel: "/tmp/audio.mp3",
+          attachment,
+        },
+        modelOverride: "openai/gpt-5.4",
+        promptOverride: null,
+        lengthRaw: "long",
+        languageRaw: "auto",
+        format: "text",
+        overrides: createEmptyRunOverrides(),
+        extractOnly: false,
+        slides: null,
+      },
+      {
+        runId: "media-run",
+        env: {},
+        fetch: globalThis.fetch,
+        execFile: execFile as unknown as ExecFileFn,
+        cache: { mode: "bypass", store: null, ttlMs: 0, maxBytes: 0, path: null },
+        mediaCache: null,
+        now: () => 200,
+      },
+      (event) => {
+        events.push({
+          type: event.type,
+          ...(event.type === "run-started" ? { input: event.input } : {}),
+          ...(event.type === "summary-delta" ? { text: event.text } : {}),
+        });
+      },
+      {
+        urlFlowContext: preparedContext,
+        assetSummaryContext: assetSummaryContext as never,
+      },
+    );
+
+    expect(result).toMatchObject({
+      kind: "asset-media",
+      input: {
+        kind: "asset",
+        sourceKind: "file",
+        source: "/tmp/audio.mp3",
+        mediaType: "audio/mpeg",
+        filename: "audio.mp3",
+      },
+      usedModel: "openai/gpt-5.4",
+      summaryFromCache: false,
+      costUsd: 0.03,
+      details: {
+        kind: "summary",
+        summaryArgs: {
+          attachment: {
+            kind: "file",
+            mediaType: "text/plain",
+            filename: "audio.mp3.transcript.txt",
+          },
+        },
+      },
+    });
+    expect(result.input).not.toHaveProperty("attachment");
+    if (result.kind !== "asset-media" || result.details.kind !== "summary") {
+      throw new Error("Expected media summary result");
+    }
+    expect(result.details.summaryArgs.attachment).not.toHaveProperty("bytes");
+    expect(events[0]?.input).not.toHaveProperty("attachment");
+    expect(events).toContainEqual({ type: "summary-delta", text: "Media summary.\n" });
     expect(events.at(-1)?.type).toBe("run-completed");
   });
 });

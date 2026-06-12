@@ -10,7 +10,7 @@ import { estimateWhisperTranscriptionCostUsd, formatUSD } from "./format.js";
 
 type CliUrlSummarizeResult = Exclude<
   SummarizeResult,
-  { kind: "asset-summary" | "asset-extraction" }
+  { kind: "asset-summary" | "asset-extraction" | "asset-media" }
 >;
 
 function buildTranscriptionCostLabel(
@@ -32,7 +32,11 @@ export async function presentCliSummarizeResult(options: {
   slidesOutput?: SlidesTerminalOutput | null;
 }): Promise<void> {
   const { ctx, result } = options;
-  if (result.kind === "asset-summary" || result.kind === "asset-extraction") {
+  if (
+    result.kind === "asset-summary" ||
+    result.kind === "asset-extraction" ||
+    result.kind === "asset-media"
+  ) {
     throw new Error("CLI URL presentation requires a URL result");
   }
   if (result.details.kind === "delegated-asset") return;

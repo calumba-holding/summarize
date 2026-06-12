@@ -5,6 +5,7 @@ import type { SummarizeRequest, SummarizeRuntime } from "../application/summariz
 import type { SlideSettings } from "../slides/index.js";
 import { presentCliSummarizeResult } from "./cli-summarize-output.js";
 import type { AssetExtractResult } from "./flows/asset/extract.js";
+import { presentMediaFileResult } from "./flows/asset/media.js";
 import { outputExtractedAsset } from "./flows/asset/output.js";
 import { presentAssetSummary } from "./flows/asset/summary.js";
 import type {
@@ -61,6 +62,7 @@ export function createCliResolvedAssetExecutor(options: {
 }): {
   summarize: (args: SummarizeAssetArgs) => Promise<AssetSummaryResult>;
   extract: (args: SummarizeAssetArgs) => Promise<AssetExtractResult>;
+  media: (args: SummarizeAssetArgs) => Promise<void>;
 } {
   const { input, slides, ...requestDefaults } = options.baseRequest;
   void input;
@@ -116,6 +118,32 @@ export function createCliResolvedAssetExecutor(options: {
         costUsd: result.costUsd,
       });
       return result.extracted;
+    },
+    media: async (args) => {
+      const request: SummarizeRequest = {
+        ...requestDefaults,
+        input: {
+          kind: "resolved-media",
+          sourceKind: args.sourceKind,
+          sourceLabel: args.sourceLabel,
+          attachment: args.attachment,
+        },
+        slides: null,
+      };
+      const result = await executeSummarize(
+        request,
+        options.runtime,
+        (event) => {
+          if (event.type === "model-selected") {
+            args.onModelChosen?.(event.modelId);
+          }
+        },
+        options.prepared,
+      );
+      if (result.kind !== "asset-media") {
+        throw new Error("CLI resolved media execution returned an incompatible result");
+      }
+      await presentMediaFileResult(options.presentationContext, result.details);
     },
   };
 }

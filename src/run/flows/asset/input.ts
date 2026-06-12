@@ -132,8 +132,8 @@ async function runMediaTranscription({
     attachment: {
       kind: "file",
       filename,
-      mediaType: "audio/mpeg", // Will be detected properly by summarizeMediaFile
-      bytes: new Uint8Array(0), // Placeholder - summarizeMediaFile reads from path directly
+      mediaType: "audio/mpeg", // The media executor detects the actual type.
+      bytes: new Uint8Array(0), // Placeholder; media execution reads from the source path.
     },
     onModelChosen: (modelId) => {
       if (!ctx.progressEnabled) return;
@@ -205,7 +205,7 @@ export async function handleFileInput(
   ctx.setClearProgressBeforeStdout(pauseProgressLine);
   try {
     // Check if file looks like transcribable media by extension.
-    // If so, route directly to summarizeMediaFile which has a higher size limit (2GB).
+    // If so, route directly to the media handler, which has a higher size limit (2GB).
     // This avoids the 50MB limit in loadLocalAsset for audio/video files.
     if (isTranscribableExtension(inputTarget.filePath) && ctx.summarizeMediaFile) {
       const filename = path.basename(inputTarget.filePath);
@@ -268,7 +268,7 @@ export async function withUrlAsset(
 ): Promise<boolean> {
   if (!url || isYoutubeUrl) return false;
 
-  // For remote media URLs (by extension), route directly to summarizeMediaFile.
+  // For remote media URLs (by extension), route directly to the media handler.
   // This avoids the 50MB limit in loadRemoteAsset - yt-dlp handles streaming download.
   if (isTranscribableExtension(url) && ctx.summarizeMediaFile) {
     const theme = createProgressTheme(ctx.envForRun, ctx.progressEnabled);

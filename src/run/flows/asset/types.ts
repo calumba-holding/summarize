@@ -153,6 +153,12 @@ export type SummarizeAssetArgs = {
   onModelChosen?: ((modelId: string) => void) | null;
 };
 
+export type PresentAssetSummaryArgs = {
+  sourceKind: "file" | "asset-url";
+  sourceLabel: string;
+  attachment: Pick<AssetAttachment, "kind" | "mediaType" | "filename">;
+};
+
 export type AssetSummaryResult = {
   kind: "summary";
   outcome: "model" | "short-content" | "token-fit" | "attempts-exhausted";

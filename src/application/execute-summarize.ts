@@ -3,6 +3,7 @@ import type { ExtractedLinkContent } from "../content/index.js";
 import { buildUrlPrompt } from "../engine/web-prompt.js";
 import { resolveUrlSummaryExecution, type UrlSummaryResolution } from "../engine/web-summary.js";
 import { extractAssetContent } from "../run/flows/asset/extract.js";
+import { executeMediaFile } from "../run/flows/asset/media.js";
 import { executeAssetSummary } from "../run/flows/asset/summary.js";
 import { executeUrlFlow } from "../run/flows/url/flow.js";
 import type { UrlFlowContext } from "../run/flows/url/types.js";
@@ -17,6 +18,7 @@ import {
 import type {
   AssetExecutionInput,
   AssetExtractionExecutionResult,
+  AssetMediaExecutionResult,
   AssetSummaryExecutionResult,
   ExtractionResult,
   SummarizeEvent,
@@ -160,7 +162,7 @@ function emitNormalizedSummary(summary: string, emit: SummarizeEventSink) {
 }
 
 function toAssetExecutionInput(
-  input: Extract<SummarizeRequest["input"], { kind: "resolved-asset" }>,
+  input: Extract<SummarizeRequest["input"], { kind: "resolved-asset" | "resolved-media" }>,
 ): AssetExecutionInput {
   return {
     kind: "asset",
@@ -210,9 +212,9 @@ export async function executeSummarize(
     type: "run-started",
     runId: runtime.runId,
     input:
-      request.input.kind === "resolved-asset"
+      request.input.kind === "resolved-asset" || request.input.kind === "resolved-media"
         ? {
-            kind: "resolved-asset",
+            kind: request.input.kind,
             sourceKind: request.input.sourceKind,
             sourceLabel: request.input.sourceLabel,
             mediaType: request.input.attachment.mediaType,
@@ -223,6 +225,45 @@ export async function executeSummarize(
 
   try {
     const boundPrepared = prepared ? bindSummarizeExecutionEvents(prepared, emit) : null;
+    if (request.input.kind === "resolved-media") {
+      const assetSummaryContext = boundPrepared?.assetSummaryContext;
+      if (!assetSummaryContext) {
+        throw new Error("Resolved media execution requires prepared asset resources");
+      }
+      if (!request.extractOnly) {
+        emit({ type: "summary-started" });
+      }
+      const mediaResult = await executeMediaFile(assetSummaryContext, {
+        sourceKind: request.input.sourceKind,
+        sourceLabel: request.input.sourceLabel,
+        attachment: request.input.attachment,
+        onModelChosen: (modelId) => emit({ type: "model-selected", modelId }),
+      });
+      if (mediaResult.kind === "summary") {
+        if (!mediaResult.summary.summaryEmitted) {
+          emitNormalizedSummary(mediaResult.summary.summary, emit);
+        }
+      }
+      const report =
+        mediaResult.kind === "summary" ? await assetSummaryContext.buildReport() : null;
+      const result: AssetMediaExecutionResult = {
+        kind: "asset-media",
+        input: toAssetExecutionInput(request.input),
+        usedModel:
+          usedModel ??
+          (mediaResult.kind === "summary" ? (mediaResult.summary.llm?.model ?? null) : null),
+        summaryFromCache:
+          mediaResult.kind === "summary" ? mediaResult.summary.summaryFromCache : false,
+        elapsedMs: now() - startedAt,
+        report,
+        costUsd:
+          mediaResult.kind === "summary" ? await assetSummaryContext.estimateCostUsd() : null,
+        details: mediaResult,
+      };
+      emit({ type: "run-completed", result });
+      return result;
+    }
+
     if (request.input.kind === "resolved-asset") {
       const assetSummaryContext = boundPrepared?.assetSummaryContext;
       if (!assetSummaryContext) {

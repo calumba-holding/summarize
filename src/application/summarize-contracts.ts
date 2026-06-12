@@ -8,6 +8,7 @@ import type {
 import type { RunMetricsReport } from "../costs.js";
 import type { ExecFileFn } from "../markitdown.js";
 import type { AssetExtractResult } from "../run/flows/asset/extract.js";
+import type { MediaFileExecutionResult } from "../run/flows/asset/media.js";
 import type { AssetSummaryResult } from "../run/flows/asset/types.js";
 import type { RunOverrides } from "../run/run-settings.js";
 import type {
@@ -34,6 +35,12 @@ export type SummarizeInput =
     }
   | {
       kind: "resolved-asset";
+      sourceKind: "file" | "asset-url";
+      sourceLabel: string;
+      attachment: AssetAttachment;
+    }
+  | {
+      kind: "resolved-media";
       sourceKind: "file" | "asset-url";
       sourceLabel: string;
       attachment: AssetAttachment;
@@ -90,7 +97,10 @@ export type SummarizeEvent =
 
 export type SummarizeEventSink = (event: SummarizeEvent) => void;
 
-export type UrlSummarizeInput = Exclude<SummarizeInput, { kind: "resolved-asset" }>;
+export type UrlSummarizeInput = Exclude<
+  SummarizeInput,
+  { kind: "resolved-asset" | "resolved-media" }
+>;
 
 export type AssetExecutionInput = {
   kind: "asset";
@@ -104,6 +114,13 @@ export type SummarizeEventInput =
   | UrlSummarizeInput
   | {
       kind: "resolved-asset";
+      sourceKind: "file" | "asset-url";
+      sourceLabel: string;
+      mediaType: string;
+      filename: string | null;
+    }
+  | {
+      kind: "resolved-media";
       sourceKind: "file" | "asset-url";
       sourceLabel: string;
       mediaType: string;
@@ -153,8 +170,20 @@ export type AssetExtractionExecutionResult = {
   costUsd: number | null;
 };
 
+export type AssetMediaExecutionResult = {
+  kind: "asset-media";
+  input: AssetExecutionInput;
+  usedModel: string | null;
+  summaryFromCache: boolean;
+  elapsedMs: number;
+  report: RunMetricsReport | null;
+  costUsd: number | null;
+  details: MediaFileExecutionResult;
+};
+
 export type SummarizeResult =
   | SummaryResult
   | ExtractionResult
   | AssetSummaryExecutionResult
-  | AssetExtractionExecutionResult;
+  | AssetExtractionExecutionResult
+  | AssetMediaExecutionResult;

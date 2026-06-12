@@ -21,7 +21,12 @@ import { hasBirdCli, hasXurlCli } from "../../env.js";
 import { writeVerbose } from "../../logging.js";
 import { MAX_LOCAL_MEDIA_BYTES, MAX_LOCAL_MEDIA_LABEL } from "./media-policy.js";
 import { executeAssetSummary, presentAssetSummary } from "./summary.js";
-import type { AssetSummaryContext, AssetSummaryResult, SummarizeAssetArgs } from "./types.js";
+import type {
+  AssetSummaryContext,
+  AssetSummaryResult,
+  PresentAssetSummaryArgs,
+  SummarizeAssetArgs,
+} from "./types.js";
 
 export type MediaFileExecutionResult =
   | {
@@ -31,7 +36,7 @@ export type MediaFileExecutionResult =
   | {
       kind: "summary";
       extracted: ExtractedLinkContent;
-      summaryArgs: SummarizeAssetArgs;
+      summaryArgs: PresentAssetSummaryArgs;
       summary: AssetSummaryResult;
     };
 
@@ -349,13 +354,22 @@ See: https://github.com/openai/whisper for setup details`);
       return { kind: "extraction", extracted };
     }
 
-    const summaryArgs: SummarizeAssetArgs = {
+    const summaryExecutionArgs: SummarizeAssetArgs = {
       sourceKind: "file",
       sourceLabel: `${args.sourceLabel} (transcript)`,
       attachment: transcriptAttachment,
       onModelChosen: args.onModelChosen,
     };
-    const summary = await executeAssetSummary(ctx, summaryArgs);
+    const summary = await executeAssetSummary(ctx, summaryExecutionArgs);
+    const summaryArgs: PresentAssetSummaryArgs = {
+      sourceKind: summaryExecutionArgs.sourceKind,
+      sourceLabel: summaryExecutionArgs.sourceLabel,
+      attachment: {
+        kind: summaryExecutionArgs.attachment.kind,
+        mediaType: summaryExecutionArgs.attachment.mediaType,
+        filename: summaryExecutionArgs.attachment.filename,
+      },
+    };
     return { kind: "summary", extracted, summaryArgs, summary };
   } catch (error) {
     if (error instanceof SpeakerIdentificationError) {
@@ -384,12 +398,4 @@ export async function presentMediaFileResult(
   if (!result.extracted.content.endsWith("\n")) {
     ctx.stdout.write("\n");
   }
-}
-
-export async function summarizeMediaFile(
-  ctx: AssetSummaryContext,
-  args: SummarizeAssetArgs,
-): Promise<void> {
-  const result = await executeMediaFile(ctx, args);
-  await presentMediaFileResult(ctx, result);
 }

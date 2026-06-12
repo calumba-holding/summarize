@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   outputExtractedAsset: vi.fn(),
   presentCliSummarizeResult: vi.fn(),
   presentAssetSummary: vi.fn(),
+  presentMediaFileResult: vi.fn(),
 }));
 
 vi.mock("../src/application/execute-summarize.js", () => ({
@@ -19,6 +20,9 @@ vi.mock("../src/run/cli-summarize-output.js", () => ({
 }));
 vi.mock("../src/run/flows/asset/output.js", () => ({
   outputExtractedAsset: mocks.outputExtractedAsset,
+}));
+vi.mock("../src/run/flows/asset/media.js", () => ({
+  presentMediaFileResult: mocks.presentMediaFileResult,
 }));
 vi.mock("../src/run/flows/asset/summary.js", () => ({
   presentAssetSummary: mocks.presentAssetSummary,
@@ -232,5 +236,75 @@ describe("CLI summarize execution", () => {
       costUsd: 0.01,
     });
     expect(result).toBe(extracted);
+  });
+
+  it("executes and presents resolved media through the application", async () => {
+    const details = {
+      kind: "summary",
+      extracted: { content: "Transcript" },
+      summaryArgs: {
+        sourceKind: "file",
+        sourceLabel: "/tmp/audio.mp3 (transcript)",
+        attachment: {
+          kind: "file",
+          mediaType: "text/plain",
+          filename: "audio.mp3.transcript.txt",
+        },
+      },
+      summary: { summary: "Media summary" },
+    };
+    mocks.executeSummarize.mockImplementation(async (_request, _runtime, events) => {
+      events?.({ type: "model-selected", modelId: "openai/gpt-5.4" });
+      return { kind: "asset-media", details };
+    });
+    const runtime = {} as SummarizeRuntime;
+    const prepared = { urlFlowContext: {} as UrlFlowContext };
+    const presentationContext = {} as never;
+    const execute = createCliResolvedAssetExecutor({
+      baseRequest: {
+        input: { kind: "file", filePath: "/tmp/audio.mp3" },
+        modelOverride: null,
+        promptOverride: null,
+        lengthRaw: null,
+        languageRaw: null,
+        format: "text",
+        overrides: createEmptyRunOverrides(),
+        extractOnly: false,
+        slides: null,
+      },
+      runtime,
+      prepared,
+      presentationContext,
+      extractionOutputContext: {} as never,
+    });
+    const args = {
+      sourceKind: "file" as const,
+      sourceLabel: "/tmp/audio.mp3",
+      attachment: {
+        kind: "file" as const,
+        mediaType: "audio/mpeg",
+        filename: "audio.mp3",
+        bytes: new Uint8Array(),
+      },
+      onModelChosen: vi.fn(),
+    };
+
+    await execute.media(args);
+
+    expect(mocks.executeSummarize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          kind: "resolved-media",
+          sourceKind: "file",
+          sourceLabel: "/tmp/audio.mp3",
+          attachment: args.attachment,
+        },
+      }),
+      runtime,
+      expect.any(Function),
+      prepared,
+    );
+    expect(args.onModelChosen).toHaveBeenCalledWith("openai/gpt-5.4");
+    expect(mocks.presentMediaFileResult).toHaveBeenCalledWith(presentationContext, details);
   });
 });

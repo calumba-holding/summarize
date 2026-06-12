@@ -5,7 +5,7 @@ import { Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import type { CacheStore } from "../src/cache.js";
 import type { ExtractedLinkContent } from "../src/content/index.js";
-import { executeMediaFile, summarizeMediaFile } from "../src/run/flows/asset/media.js";
+import { executeMediaFile } from "../src/run/flows/asset/media.js";
 import type { AssetSummaryContext } from "../src/run/flows/asset/types.js";
 
 const createLinkPreviewClient = vi.hoisted(() => vi.fn());
@@ -61,7 +61,7 @@ function makeContext(overrides: Partial<AssetSummaryContext>): AssetSummaryConte
   } as AssetSummaryContext;
 }
 
-describe("summarizeMediaFile options", () => {
+describe("executeMediaFile options", () => {
   it("returns extracted transcripts without presenting them", async () => {
     createLinkPreviewClient.mockReset();
     const root = mkdtempSync(join(tmpdir(), "summarize-media-execution-"));
@@ -142,7 +142,7 @@ describe("summarizeMediaFile options", () => {
     });
 
     await expect(
-      summarizeMediaFile(ctx, {
+      executeMediaFile(ctx, {
         sourceKind: "file",
         sourceLabel: audioPath,
         attachment: {
@@ -192,7 +192,7 @@ describe("summarizeMediaFile options", () => {
     });
 
     await expect(
-      summarizeMediaFile(ctx, {
+      executeMediaFile(ctx, {
         sourceKind: "file",
         sourceLabel: audioPath,
         attachment: {
@@ -244,7 +244,7 @@ describe("summarizeMediaFile options", () => {
     });
 
     await expect(
-      summarizeMediaFile(ctx, {
+      executeMediaFile(ctx, {
         sourceKind: "file",
         sourceLabel: videoPath,
         attachment: {

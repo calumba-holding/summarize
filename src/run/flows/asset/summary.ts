@@ -30,6 +30,7 @@ import type {
   AssetSummaryContext,
   AssetSummaryContextInput,
   AssetSummaryResult,
+  PresentAssetSummaryArgs,
   SummarizeAssetArgs,
 } from "./types.js";
 
@@ -61,7 +62,7 @@ function buildAssetExtracted(args: SummarizeAssetArgs): AssetSummaryResult["extr
   };
 }
 
-function buildAssetJsonInput(ctx: AssetSummaryContext, args: SummarizeAssetArgs) {
+function buildAssetJsonInput(ctx: AssetSummaryContext, args: PresentAssetSummaryArgs) {
   const shared = {
     timeoutMs: ctx.timeoutMs,
     length:
@@ -98,7 +99,7 @@ async function writeAssetMetrics(ctx: AssetSummaryContext, result: AssetSummaryR
 
 export async function presentAssetSummary(
   ctx: AssetSummaryContext,
-  args: SummarizeAssetArgs,
+  args: PresentAssetSummaryArgs,
   result: AssetSummaryResult,
 ) {
   if (result.outcome === "attempts-exhausted") {

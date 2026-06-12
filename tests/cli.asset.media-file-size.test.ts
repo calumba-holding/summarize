@@ -98,16 +98,16 @@ function makeContext(): AssetSummaryContext {
   };
 }
 
-describe("summarizeMediaFile size limits", () => {
+describe("executeMediaFile size limits", () => {
   it("rejects local media larger than 2GB", async () => {
     const hugeSize = 2 * 1024 * 1024 * 1024 + 1;
     statSync.mockReturnValue({ size: hugeSize, mtimeMs: 123 });
 
-    const { summarizeMediaFile } = await import("../src/run/flows/asset/media.js");
+    const { executeMediaFile } = await import("../src/run/flows/asset/media.js");
     const ctx = makeContext();
 
     await expect(
-      summarizeMediaFile(ctx, {
+      executeMediaFile(ctx, {
         sourceKind: "file",
         sourceLabel: "/tmp/huge.mp3",
         attachment: {

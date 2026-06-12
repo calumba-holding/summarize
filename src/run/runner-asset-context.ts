@@ -1,8 +1,6 @@
 import type { AssetInputContext } from "./flows/asset/input.js";
 import type { AssetSummaryContext } from "./flows/asset/types.js";
 
-type SummarizeMediaFile = typeof import("./flows/asset/media.js").summarizeMediaFile;
-
 export function createRunnerAssetInputContext({
   summarizeAssetImpl,
   summarizeMediaFileImpl,
@@ -13,15 +11,13 @@ export function createRunnerAssetInputContext({
   clearProgressIfCurrent,
 }: {
   summarizeAssetImpl: AssetInputContext["summarizeAsset"];
-  summarizeMediaFileImpl: SummarizeMediaFile;
+  summarizeMediaFileImpl: NonNullable<AssetInputContext["summarizeMediaFile"]>;
   assetSummaryContext: AssetSummaryContext;
   progressEnabled: boolean;
   trackedFetch: typeof fetch;
   setClearProgressBeforeStdout: AssetInputContext["setClearProgressBeforeStdout"];
   clearProgressIfCurrent: AssetInputContext["clearProgressIfCurrent"];
 }): AssetInputContext {
-  const summarizeMediaFile = (args: Parameters<SummarizeMediaFile>[1]) =>
-    summarizeMediaFileImpl(assetSummaryContext, args);
   return {
     env: assetSummaryContext.env,
     envForRun: assetSummaryContext.envForRun,
@@ -30,7 +26,7 @@ export function createRunnerAssetInputContext({
     timeoutMs: assetSummaryContext.timeoutMs,
     trackedFetch,
     summarizeAsset: summarizeAssetImpl,
-    summarizeMediaFile,
+    summarizeMediaFile: summarizeMediaFileImpl,
     setClearProgressBeforeStdout,
     clearProgressIfCurrent,
   };
