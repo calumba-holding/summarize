@@ -5,14 +5,14 @@ import {
   normalizeSummarySlideHeadings,
 } from "@steipete/summarize-core/slides";
 import { render as renderMarkdownAnsi } from "markdansi";
+import {
+  readLastSuccessfulCliProvider,
+  writeLastSuccessfulCliProvider,
+} from "../../../application/cli-fallback-state.js";
 import type { ExtractedLinkContent } from "../../../content/index.js";
 import type { RunMetricsReport } from "../../../costs.js";
 import { resolveUrlSummaryExecution } from "../../../engine/web-summary.js";
 import { buildRunJsonEnv } from "../../../shared/run-api-status.js";
-import {
-  readLastSuccessfulCliProvider,
-  writeLastSuccessfulCliProvider,
-} from "../../cli-fallback-state.js";
 import { buildExtractFinishLabel, writeFinishLine } from "../../finish-line.js";
 import { writeVerbose } from "../../logging.js";
 import { prepareMarkdownForTerminal } from "../../markdown.js";

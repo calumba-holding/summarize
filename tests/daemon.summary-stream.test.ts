@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createDaemonSummaryStreamHandler } from "../src/daemon/flow-context.js";
+import { createEventSummaryStreamHandler } from "../src/application/url-runtime.js";
 import { mergeStreamingChunk } from "../src/engine/streaming.js";
 
 describe("daemon summary stream", () => {
   it("sends full snapshots for corrected cumulative chunks", async () => {
     const chunks: string[] = [];
-    const stream = createDaemonSummaryStreamHandler({
-      writeChunk: (text) => chunks.push(text),
+    const stream = createEventSummaryStreamHandler((event) => {
+      if (event.type === "summary-delta") chunks.push(event.text);
     });
 
     expect(
@@ -41,8 +41,8 @@ describe("daemon summary stream", () => {
 
   it("strips leading blank lines from the first emitted chunk", async () => {
     const chunks: string[] = [];
-    const stream = createDaemonSummaryStreamHandler({
-      writeChunk: (text) => chunks.push(text),
+    const stream = createEventSummaryStreamHandler((event) => {
+      if (event.type === "summary-delta") chunks.push(event.text);
     });
 
     expect(

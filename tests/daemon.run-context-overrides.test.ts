@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { CacheState, CacheStore } from "../src/cache.js";
-import { createDaemonUrlFlowContext } from "../src/daemon/flow-context.js";
+import { createTestSummarizeUrlFlowContext } from "./helpers/application-summarize.js";
 
 function makeTempHome(): string {
   return mkdtempSync(join(tmpdir(), "summarize-daemon-home-"));
@@ -26,7 +26,7 @@ describe("daemon/flow-context (overrides)", () => {
 
   it("defaults to long + auto language when unset", () => {
     const home = makeTempHome();
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -46,7 +46,7 @@ describe("daemon/flow-context (overrides)", () => {
   it("accepts custom length and language overrides", () => {
     const home = makeTempHome();
     writeConfig(home, { output: { language: "de" } });
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -69,7 +69,7 @@ describe("daemon/flow-context (overrides)", () => {
   it("uses config language when request is unset, then prefers request overrides", () => {
     const home = makeTempHome();
     writeConfig(home, { output: { language: "de" } });
-    const configCtx = createDaemonUrlFlowContext({
+    const configCtx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -86,7 +86,7 @@ describe("daemon/flow-context (overrides)", () => {
       configCtx.flags.outputLanguage.kind === "fixed" ? configCtx.flags.outputLanguage.tag : null,
     ).toBe("de");
 
-    const requestCtx = createDaemonUrlFlowContext({
+    const requestCtx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -108,7 +108,7 @@ describe("daemon/flow-context (overrides)", () => {
     const home = makeTempHome();
     writeConfig(home, { output: { length: "short" } });
 
-    const configCtx = createDaemonUrlFlowContext({
+    const configCtx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -122,7 +122,7 @@ describe("daemon/flow-context (overrides)", () => {
     });
     expect(configCtx.flags.lengthArg).toEqual({ kind: "preset", preset: "short" });
 
-    const requestCtx = createDaemonUrlFlowContext({
+    const requestCtx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -143,7 +143,7 @@ describe("daemon/flow-context (overrides)", () => {
       output: { length: "short", language: "de" },
     });
 
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -162,7 +162,7 @@ describe("daemon/flow-context (overrides)", () => {
 
   it("applies run overrides for daemon contexts", () => {
     const home = makeTempHome();
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -228,7 +228,7 @@ describe("daemon/flow-context (overrides)", () => {
       maxBytes: 0,
       path: null,
     };
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache,
@@ -266,7 +266,7 @@ describe("daemon/flow-context (overrides)", () => {
 
   it("leaves cache wiring unchanged when no shared cache store exists", () => {
     const home = makeTempHome();
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: {
@@ -307,7 +307,7 @@ describe("daemon/flow-context (overrides)", () => {
 
   it("defaults markdownMode to readability when format=markdown", () => {
     const home = makeTempHome();
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -326,7 +326,7 @@ describe("daemon/flow-context (overrides)", () => {
 
   it("adjusts desired output tokens based on length", () => {
     const home = makeTempHome();
-    const shortCtx = createDaemonUrlFlowContext({
+    const shortCtx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),
@@ -338,7 +338,7 @@ describe("daemon/flow-context (overrides)", () => {
       runStartedAtMs: Date.now(),
       stdoutSink: { writeChunk: () => {} },
     });
-    const xlCtx = createDaemonUrlFlowContext({
+    const xlCtx = createTestSummarizeUrlFlowContext({
       env: { HOME: home },
       fetchImpl: fetch,
       cache: makeCacheState(),

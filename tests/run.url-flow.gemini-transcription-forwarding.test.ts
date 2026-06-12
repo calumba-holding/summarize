@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CacheState } from "../src/cache.js";
 import type { ExtractedLinkContent } from "../src/content/index.js";
 import type { LinkPreviewClientOptions } from "../src/content/index.js";
-import { createDaemonUrlFlowContext } from "../src/daemon/flow-context.js";
+import { createTestSummarizeUrlFlowContext } from "./helpers/application-summarize.js";
 
 const mocks = vi.hoisted(() => {
   const fetchLinkContent = vi.fn<(url: string) => Promise<ExtractedLinkContent>>();
@@ -84,7 +84,7 @@ describe("runUrlFlow transcription wiring", () => {
       },
     });
 
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: root, OPENAI_API_KEY: "test" },
       fetchImpl: vi.fn() as unknown as typeof fetch,
       cache,

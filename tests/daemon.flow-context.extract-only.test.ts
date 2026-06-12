@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CacheState } from "../src/cache.js";
-import { createDaemonUrlFlowContext } from "../src/daemon/flow-context.js";
+import { createTestSummarizeUrlFlowContext } from "./helpers/application-summarize.js";
 
 describe("daemon/flow-context extractOnly", () => {
   it("sets extractMode when extractOnly is true", () => {
@@ -16,7 +16,7 @@ describe("daemon/flow-context extractOnly", () => {
       path: null,
     };
 
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: root, OPENAI_API_KEY: "test" },
       fetchImpl: fetch,
       cache,

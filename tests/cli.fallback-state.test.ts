@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   readLastSuccessfulCliProvider,
   writeLastSuccessfulCliProvider,
-} from "../src/run/cli-fallback-state.js";
+} from "../src/application/cli-fallback-state.js";
 
 describe("run/cli-fallback-state", () => {
   it("stores and restores the last successful CLI provider", async () => {

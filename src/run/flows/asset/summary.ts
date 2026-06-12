@@ -1,5 +1,9 @@
 import { render as renderMarkdownAnsi } from "markdansi";
 import {
+  readLastSuccessfulCliProvider,
+  writeLastSuccessfulCliProvider,
+} from "../../../application/cli-fallback-state.js";
+import {
   buildAttachmentContentHash,
   buildLanguageKey,
   buildLengthKey,
@@ -15,10 +19,6 @@ import { SUMMARY_LENGTH_TARGET_CHARACTERS, SUMMARY_SYSTEM_PROMPT } from "../../.
 import { buildRunJsonEnv } from "../../../shared/run-api-status.js";
 import { countTokens } from "../../../tokenizer.js";
 import { isUnsupportedAttachmentError } from "../../attachments.js";
-import {
-  readLastSuccessfulCliProvider,
-  writeLastSuccessfulCliProvider,
-} from "../../cli-fallback-state.js";
 import { writeFinishLine } from "../../finish-line.js";
 import { resolveTargetCharacters } from "../../format.js";
 import { writeVerbose } from "../../logging.js";

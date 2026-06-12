@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CacheState } from "../src/cache.js";
 import type { ExtractedLinkContent } from "../src/content/index.js";
-import { createDaemonUrlFlowContext } from "../src/daemon/flow-context.js";
 import { createUrlSlidesSession } from "../src/run/flows/url/slides-session.js";
 import { resolveSlideSettings } from "../src/slides/settings.js";
 import type { SlideExtractionResult } from "../src/slides/types.js";
+import { createTestSummarizeUrlFlowContext } from "./helpers/application-summarize.js";
 
 vi.mock("../src/slides/index.js", async () => {
   const actual =
@@ -120,7 +120,7 @@ describe("runUrlFlow slides done hook", () => {
     const events: Array<
       { kind: "timeline"; count: number; hasImages: boolean } | { kind: "done" }
     > = [];
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: root, OPENAI_API_KEY: "test" },
       fetchImpl: globalThis.fetch.bind(globalThis),
       cache: { mode: "bypass", store: null, ttlMs: 0, maxBytes: 0, path: null },
@@ -225,7 +225,7 @@ describe("runUrlFlow slides done hook", () => {
       put: vi.fn(async () => null),
     };
 
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: root, OPENAI_API_KEY: "test", PATH: binDir },
       fetchImpl,
       urlFetchImpl: fetchImpl,
@@ -295,7 +295,7 @@ describe("runUrlFlow slides done hook", () => {
 
     let doneResult: { ok: boolean; error?: string | null } | null = null;
 
-    const ctx = createDaemonUrlFlowContext({
+    const ctx = createTestSummarizeUrlFlowContext({
       env: { HOME: root, OPENAI_API_KEY: "test" },
       fetchImpl,
       cache,

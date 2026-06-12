@@ -1,9 +1,13 @@
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { executeSummarize } from "../src/application/execute-summarize.js";
 import { createCacheStore } from "../src/cache.js";
-import { streamSummaryForVisiblePage } from "../src/daemon/summarize.js";
+import { buildDaemonSummaryMetrics } from "../src/daemon/summarize-presentation.js";
+import type { ExecFileFn } from "../src/markitdown.js";
+import { createEmptyRunOverrides } from "../src/run/run-settings.js";
 import { makeAssistantMessage, makeTextDeltaStream } from "./helpers/pi-ai-mock.js";
 
 const mocks = vi.hoisted(() => ({
@@ -63,41 +67,62 @@ describe("daemon summary cache", () => {
 
     const runOnce = async () => {
       let out = "";
-      const sink = {
-        writeChunk: (text: string) => {
-          out += text;
+      const events: Array<{ type: string; cached?: boolean }> = [];
+      const result = await executeSummarize(
+        {
+          input: {
+            kind: "visible-page",
+            url: "https://example.com/article",
+            title: "Hello",
+            text: "Content",
+            truncated: false,
+          },
+          modelOverride: "openai/gpt-5.2",
+          promptOverride: null,
+          lengthRaw: "xl",
+          languageRaw: "auto",
+          format: "text",
+          overrides: createEmptyRunOverrides(),
+          extractOnly: false,
+          slides: null,
         },
-        onModelChosen: () => {},
-      };
-
-      const result = await streamSummaryForVisiblePage({
-        env: { HOME: root, OPENAI_API_KEY: "test" },
-        fetchImpl: globalThis.fetch.bind(globalThis),
-        input: {
-          url: "https://example.com/article",
-          title: "Hello",
-          text: "Content",
-          truncated: false,
+        {
+          runId: "cache-test",
+          env: { HOME: root, OPENAI_API_KEY: "test" },
+          fetch: globalThis.fetch.bind(globalThis),
+          execFile: execFile as unknown as ExecFileFn,
+          cache: cacheState,
+          mediaCache: null,
         },
-        modelOverride: "openai/gpt-5.2",
-        promptOverride: null,
-        lengthRaw: "xl",
-        languageRaw: "auto",
-        sink,
-        cache: cacheState,
-      });
-
-      return { out, metrics: result.metrics };
+        (event) => {
+          events.push({
+            type: event.type,
+            ...(event.type === "summary-cache" ? { cached: event.cached } : {}),
+          });
+          if (event.type === "summary-delta") out += event.text;
+        },
+      );
+      if (result.kind !== "summary") throw new Error("expected summary result");
+      return { out, metrics: buildDaemonSummaryMetrics(result), events };
     };
 
     const first = await runOnce();
     expect(mocks.streamSimple).toHaveBeenCalledTimes(1);
     expect(first.out).toBe("### Overview\n- Cached summary.\n");
+    expect(first.events.slice(0, 3)).toEqual([
+      { type: "run-started" },
+      { type: "content-extracted" },
+      { type: "summary-started" },
+    ]);
+    expect(first.events).toContainEqual({ type: "summary-cache", cached: false });
+    expect(first.events.at(-1)).toEqual({ type: "run-completed" });
 
     const second = await runOnce();
     expect(mocks.streamSimple).toHaveBeenCalledTimes(1);
     expect(second.out).toBe(first.out);
     expect(second.metrics.summary.split(" · ")[0]).toBe("Cached");
+    expect(second.events).toContainEqual({ type: "summary-cache", cached: true });
+    expect(second.events.at(-1)).toEqual({ type: "run-completed" });
 
     store.close();
     globalFetchSpy.mockRestore();

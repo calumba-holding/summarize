@@ -1,21 +1,6 @@
 import { Writable } from "node:stream";
-import { resolveRunContextState } from "../application/context.js";
-import { createRunFlowContexts } from "../application/flow-contexts.js";
-import {
-  createExecutableRunModel,
-  createRunModelRuntime,
-  resolveRunModelSpec,
-} from "../application/model-runtime.js";
-import type { CacheState } from "../cache.js";
 import type { SummarizeConfig } from "../config.js";
-import type {
-  ExtractedLinkContent,
-  LinkPreviewProgressEvent,
-  MediaCache,
-} from "../content/index.js";
 import type { SummaryStreamHandler } from "../engine/events.js";
-import type { ExecFileFn } from "../markitdown.js";
-import { execFileTracked } from "../processes.js";
 import type { UrlFlowContext } from "../run/flows/url/types.js";
 import {
   buildPromptLengthInstruction,
@@ -25,13 +10,20 @@ import {
   resolveSummaryLength,
 } from "../run/run-settings.js";
 import { scopeTranscriptCacheForDiarization } from "../shared/transcript-diarization-cache-scope.js";
-import type { SlideImage, SlideSettings, SlideSourceKind } from "../slides/index.js";
+import { resolveRunContextState } from "./context.js";
+import { createRunFlowContexts } from "./flow-contexts.js";
+import {
+  createExecutableRunModel,
+  createRunModelRuntime,
+  resolveRunModelSpec,
+} from "./model-runtime.js";
+import type {
+  SummarizeEventSink,
+  SummarizeRequest,
+  SummarizeRuntime,
+} from "./summarize-contracts.js";
 
-type TextSink = {
-  writeChunk: (text: string) => void;
-};
-
-export function createDaemonSummaryStreamHandler(stdoutSink: TextSink): SummaryStreamHandler {
+export function createEventSummaryStreamHandler(emit: SummarizeEventSink): SummaryStreamHandler {
   return {
     onChunk: ({ streamed, prevStreamed }) => {
       const normalizedStreamed = streamed.replace(/^\n+/, "");
@@ -40,24 +32,27 @@ export function createDaemonSummaryStreamHandler(stdoutSink: TextSink): SummaryS
         ? normalizedStreamed.slice(normalizedPrevious.length)
         : normalizedStreamed;
       if (!chunk) return false;
-      stdoutSink.writeChunk(chunk);
+      emit({ type: "summary-delta", text: chunk });
       return true;
     },
     onDone: (finalText) => {
       if (finalText.endsWith("\n")) return false;
-      stdoutSink.writeChunk("\n");
+      emit({ type: "summary-delta", text: "\n" });
       return true;
     },
     onReset: () => {},
   };
 }
 
-function createWritableFromTextSink(sink: TextSink): NodeJS.WritableStream {
+export function createEventWritable(
+  emit: SummarizeEventSink,
+  enabled = true,
+): NodeJS.WritableStream {
   const stream = new Writable({
     write(chunk, _encoding, callback) {
       const text =
         typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString("utf8") : "";
-      if (text) sink.writeChunk(text);
+      if (enabled && text) emit({ type: "summary-delta", text });
       callback();
     },
   });
@@ -89,68 +84,25 @@ function applyAutoCliFallbackOverrides(
   };
 }
 
-export type DaemonUrlFlowContextArgs = {
-  env: Record<string, string | undefined>;
-  fetchImpl: typeof fetch;
-  urlFetchImpl?: typeof fetch | null;
-  cache: CacheState;
-  mediaCache?: MediaCache | null;
-  modelOverride: string | null;
-  promptOverride: string | null;
-  lengthRaw: unknown;
-  languageRaw: unknown;
-  maxExtractCharacters: number | null;
-  format?: "text" | "markdown";
-  overrides?: RunOverrides | null;
-  extractOnly?: boolean;
-  slides?: SlideSettings | null;
-  hooks?: {
-    onModelChosen?: ((modelId: string) => void) | null;
-    onExtracted?: ((extracted: ExtractedLinkContent) => void) | null;
-    onSlidesExtracted?:
-      | ((
-          slides: Awaited<ReturnType<typeof import("../slides/index.js").extractSlidesForSource>>,
-        ) => void)
-      | null;
-    onSlidesProgress?: ((text: string) => void) | null;
-    onSlidesDone?: ((result: { ok: boolean; error?: string | null }) => void) | null;
-    onSlideChunk?: (chunk: {
-      slide: SlideImage;
-      meta: {
-        slidesDir: string;
-        sourceUrl: string;
-        sourceId: string;
-        sourceKind: SlideSourceKind;
-        ocrAvailable: boolean;
-      };
-    }) => void;
-    onLinkPreviewProgress?: ((event: LinkPreviewProgressEvent) => void) | null;
-    onSummaryCached?: ((cached: boolean) => void) | null;
-  } | null;
+export function createSummarizeUrlFlowContext(args: {
+  request: SummarizeRequest;
+  runtime: SummarizeRuntime;
   runStartedAtMs: number;
-  stdoutSink: TextSink;
-};
-
-export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlFlowContext {
+  emit: SummarizeEventSink;
+}): UrlFlowContext {
+  const { request, runtime, runStartedAtMs, emit } = args;
   const {
-    env,
-    fetchImpl,
-    urlFetchImpl,
-    cache,
-    mediaCache = null,
     modelOverride,
     promptOverride,
     lengthRaw,
     languageRaw,
-    maxExtractCharacters,
     format,
     overrides,
     extractOnly,
     slides,
-    hooks,
-    runStartedAtMs,
-    stdoutSink,
-  } = args;
+  } = request;
+  const { env, fetch: fetchImpl, urlFetch: urlFetchImpl, cache, mediaCache, execFile } = runtime;
+  const maxExtractCharacters = request.input.kind === "url" ? request.input.maxCharacters : null;
 
   const envForRun: Record<string, string | undefined> = { ...env };
 
@@ -198,7 +150,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     lengthArg,
     maxOutputTokensArg,
   });
-  const stdout = createWritableFromTextSink(stdoutSink);
+  const stdout = createEventWritable(emit, !extractOnly);
   const stderr = process.stderr;
 
   const timeoutMs = resolvedOverrides.timeoutMs ?? 120_000;
@@ -215,14 +167,14 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     envForRun,
     metricsEnv: envForRun,
     fetchImpl,
-    execFileImpl: execFileTracked as unknown as ExecFileFn,
+    execFileImpl: execFile,
     maxOutputTokensArg,
     timeoutMs,
     retries,
     streamingEnabled: true,
   });
   const { metrics } = modelRuntime;
-  const summaryStream = createDaemonSummaryStreamHandler(stdoutSink);
+  const summaryStream = createEventSummaryStreamHandler(emit);
   const model = createExecutableRunModel({
     spec: modelSpec,
     runtime: modelRuntime,
@@ -251,7 +203,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     envForRun,
     stdout,
     stderr,
-    execFileImpl: execFileTracked as unknown as ExecFileFn,
+    execFileImpl: execFile,
     fetch: metrics.trackedFetch,
     ...(urlFetchImpl ? { urlFetch: urlFetchImpl } : {}),
   };
@@ -312,7 +264,17 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     flags,
     model,
     runtimeHooks,
-    eventHooks: hooks ?? undefined,
+    eventHooks: {
+      onModelChosen: (modelId) => emit({ type: "model-selected", modelId }),
+      onExtracted: (content) => emit({ type: "content-extracted", content }),
+      onSlidesExtracted: (extractedSlides) =>
+        emit({ type: "slides-extracted", slides: extractedSlides }),
+      onSlidesProgress: (text) => emit({ type: "slides-progress", text }),
+      onSlidesDone: (result) => emit({ type: "slides-completed", ...result }),
+      onSlideChunk: ({ slide, meta }) => emit({ type: "slide", slide, meta }),
+      onLinkPreviewProgress: (event) => emit({ type: "extraction-progress", event }),
+      onSummaryCached: (cached) => emit({ type: "summary-cache", cached }),
+    },
     assetSummaryOverrides: { format: "text" },
   });
 
