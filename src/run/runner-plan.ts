@@ -12,6 +12,7 @@ import {
 } from "../tty/theme.js";
 import { createCacheStateFromConfig } from "./cache-state.js";
 import { parseCliProviderArg } from "./env.js";
+import { createRunFlowContexts, createRunnerAssetInputContext } from "./flow-contexts.js";
 import { isPdfExtension, isTranscribableExtension } from "./flows/asset/input.js";
 import { summarizeMediaFile as summarizeMediaFileImpl } from "./flows/asset/media.js";
 import { writeVerbose } from "./logging.js";
@@ -26,7 +27,6 @@ import { resolveModelSelection } from "./run-models.js";
 import { resolveDesiredOutputTokens } from "./run-output.js";
 import { buildPromptLengthInstruction, resolveSummaryLength } from "./run-settings.js";
 import { resolveStreamSettings } from "./run-stream.js";
-import { createRunnerFlowContexts } from "./runner-contexts.js";
 import { executeRunnerInput } from "./runner-execution.js";
 import { resolveRunnerFlags } from "./runner-flags.js";
 import { resolveRunnerSlidesSettings } from "./runner-slides.js";
@@ -404,8 +404,17 @@ export async function createRunnerPlan(options: {
     restoreProgressAfterStdout?.();
   };
 
-  const { summarizeAsset, assetInputContext, urlFlowContext } = createRunnerFlowContexts({
-    summarizeMediaFileImpl,
+  const runtimeHooks = {
+    setTranscriptionCost,
+    writeViaFooter,
+    clearProgressForStdout,
+    restoreProgressAfterStdout,
+    setClearProgressBeforeStdout,
+    clearProgressIfCurrent,
+    buildReport,
+    estimateCostUsd,
+  };
+  const { summarizeAsset, assetSummaryContext, urlFlowContext } = createRunFlowContexts({
     cacheState,
     mediaCache,
     io: {
@@ -509,15 +518,16 @@ export async function createRunnerPlan(options: {
       getLiteLlmCatalog,
       llmCalls,
     },
-    setTranscriptionCost,
-    writeViaFooter,
-    clearProgressForStdout,
-    restoreProgressAfterStdout,
+    runtimeHooks,
+    perfTrace,
+  });
+  const assetInputContext = createRunnerAssetInputContext({
+    summarizeMediaFileImpl,
+    assetSummaryContext,
+    progressEnabled,
+    trackedFetch,
     setClearProgressBeforeStdout,
     clearProgressIfCurrent,
-    buildReport,
-    estimateCostUsd,
-    perfTrace,
   });
 
   return {

@@ -1,47 +1,45 @@
 import type { CacheState } from "../cache.js";
 import type { MediaCache } from "../content/index.js";
+import type { AssetInputContext } from "./flows/asset/input.js";
 import {
   createAssetSummaryContext,
   summarizeAsset as summarizeAssetFlow,
 } from "./flows/asset/summary.js";
-import type { SummarizeAssetArgs } from "./flows/asset/types.js";
-import { createUrlFlowContext, type UrlFlowContext } from "./flows/url/types.js";
+import type {
+  AssetSummaryContext,
+  AssetSummaryContextInput,
+  SummarizeAssetArgs,
+} from "./flows/asset/types.js";
+import {
+  createUrlFlowContext,
+  type UrlFlowContext,
+  type UrlFlowEventHooks,
+  type UrlFlowRuntimeHooks,
+} from "./flows/url/types.js";
 import type { PerfTrace } from "./perf-trace.js";
 
 type SummarizeMediaFile = typeof import("./flows/asset/media.js").summarizeMediaFile;
 
-export function createRunnerFlowContexts(options: {
-  summarizeMediaFileImpl: SummarizeMediaFile;
+export function createRunFlowContexts(options: {
   cacheState: CacheState;
   mediaCache: MediaCache | null;
   io: UrlFlowContext["io"];
   flags: UrlFlowContext["flags"];
   model: UrlFlowContext["model"];
-  setTranscriptionCost: UrlFlowContext["hooks"]["setTranscriptionCost"];
-  writeViaFooter: UrlFlowContext["hooks"]["writeViaFooter"];
-  clearProgressForStdout: UrlFlowContext["hooks"]["clearProgressForStdout"];
-  restoreProgressAfterStdout: UrlFlowContext["hooks"]["restoreProgressAfterStdout"];
-  setClearProgressBeforeStdout: UrlFlowContext["hooks"]["setClearProgressBeforeStdout"];
-  clearProgressIfCurrent: UrlFlowContext["hooks"]["clearProgressIfCurrent"];
-  buildReport: UrlFlowContext["hooks"]["buildReport"];
-  estimateCostUsd: UrlFlowContext["hooks"]["estimateCostUsd"];
+  runtimeHooks: Omit<UrlFlowRuntimeHooks, "summarizeAsset">;
+  eventHooks?: Partial<UrlFlowEventHooks>;
+  assetSummaryOverrides?: Partial<AssetSummaryContextInput["summary"]>;
   perfTrace?: PerfTrace | null;
 }) {
   const {
-    summarizeMediaFileImpl,
     cacheState,
     mediaCache,
     io,
     flags,
     model,
-    setTranscriptionCost,
-    writeViaFooter,
-    clearProgressForStdout,
-    restoreProgressAfterStdout,
-    setClearProgressBeforeStdout,
-    clearProgressIfCurrent,
-    buildReport,
-    estimateCostUsd,
+    runtimeHooks,
+    eventHooks,
+    assetSummaryOverrides,
     perfTrace = null,
   } = options;
 
@@ -72,6 +70,7 @@ export function createRunnerFlowContexts(options: {
       languageInstruction: flags.languageInstruction,
       maxOutputTokensArg: flags.maxOutputTokensArg,
       summaryCacheBypass: flags.summaryCacheBypass,
+      ...assetSummaryOverrides,
     },
     model: {
       fixedModelSpec: model.fixedModelSpec,
@@ -104,11 +103,11 @@ export function createRunnerFlowContexts(options: {
       plain: flags.plain,
     },
     hooks: {
-      writeViaFooter,
-      clearProgressForStdout,
-      restoreProgressAfterStdout,
-      buildReport,
-      estimateCostUsd,
+      writeViaFooter: runtimeHooks.writeViaFooter,
+      clearProgressForStdout: runtimeHooks.clearProgressForStdout,
+      restoreProgressAfterStdout: runtimeHooks.restoreProgressAfterStdout,
+      buildReport: runtimeHooks.buildReport,
+      estimateCostUsd: runtimeHooks.estimateCostUsd,
     },
     cache: {
       cache: cacheState,
@@ -141,23 +140,10 @@ export function createRunnerFlowContexts(options: {
 
   const summarizeAsset = (args: SummarizeAssetArgs) =>
     summarizeAssetFlow(assetSummaryContext, args);
-  const summarizeMediaFile = (args: Parameters<SummarizeMediaFile>[1]) =>
-    summarizeMediaFileImpl(assetSummaryContext, args);
 
   return {
+    assetSummaryContext,
     summarizeAsset,
-    assetInputContext: {
-      env: assetSummaryContext.env,
-      envForRun: assetSummaryContext.envForRun,
-      stderr: assetSummaryContext.stderr,
-      progressEnabled: flags.progressEnabled,
-      timeoutMs: flags.timeoutMs,
-      trackedFetch: io.fetch,
-      summarizeAsset,
-      summarizeMediaFile,
-      setClearProgressBeforeStdout,
-      clearProgressIfCurrent,
-    },
     urlFlowContext: createUrlFlowContext({
       io,
       flags,
@@ -166,16 +152,43 @@ export function createRunnerFlowContexts(options: {
       mediaCache,
       perfTrace,
       runtimeHooks: {
-        setTranscriptionCost,
+        ...runtimeHooks,
         summarizeAsset,
-        writeViaFooter,
-        clearProgressForStdout,
-        restoreProgressAfterStdout,
-        setClearProgressBeforeStdout,
-        clearProgressIfCurrent,
-        buildReport,
-        estimateCostUsd,
       },
+      eventHooks,
     }),
+  };
+}
+
+export function createRunnerAssetInputContext({
+  summarizeMediaFileImpl,
+  assetSummaryContext,
+  progressEnabled,
+  trackedFetch,
+  setClearProgressBeforeStdout,
+  clearProgressIfCurrent,
+}: {
+  summarizeMediaFileImpl: SummarizeMediaFile;
+  assetSummaryContext: AssetSummaryContext;
+  progressEnabled: boolean;
+  trackedFetch: typeof fetch;
+  setClearProgressBeforeStdout: AssetInputContext["setClearProgressBeforeStdout"];
+  clearProgressIfCurrent: AssetInputContext["clearProgressIfCurrent"];
+}): AssetInputContext {
+  const summarizeAsset = (args: SummarizeAssetArgs) =>
+    summarizeAssetFlow(assetSummaryContext, args);
+  const summarizeMediaFile = (args: Parameters<SummarizeMediaFile>[1]) =>
+    summarizeMediaFileImpl(assetSummaryContext, args);
+  return {
+    env: assetSummaryContext.env,
+    envForRun: assetSummaryContext.envForRun,
+    stderr: assetSummaryContext.stderr,
+    progressEnabled,
+    timeoutMs: assetSummaryContext.timeoutMs,
+    trackedFetch,
+    summarizeAsset,
+    summarizeMediaFile,
+    setClearProgressBeforeStdout,
+    clearProgressIfCurrent,
   };
 }
