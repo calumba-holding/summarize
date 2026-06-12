@@ -27,6 +27,18 @@ export {
   type AssetLikeHtmlFetchReason,
 } from "./link-preview/content/fetcher.js";
 export { fetchWithDnsPinnedAddresses } from "./dns-pinned-fetch.js";
+export {
+  assertNetworkTargetAllowed,
+  createNetworkGuardedFetch,
+  type NetworkGuardOptions,
+  type NetworkLookup,
+  type NetworkLookupAddress,
+} from "./network-guard.js";
+export {
+  isBlockedNetworkAddress,
+  isBlockedNetworkHostname,
+  normalizeNetworkHostname,
+} from "./network-safety.js";
 export { fetchYoutubeSourceMetrics } from "./link-preview/content/youtube-source-metrics.js";
 export {
   attachDnsPinnedAddresses,

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assertDaemonUrlFetchAllowed,
   createDaemonUrlFetchGuard,
-  isBlockedNetworkAddress,
 } from "../src/daemon/url-fetch-guard.js";
 
 async function withBunRuntime<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -24,32 +23,6 @@ async function withBunRuntime<T>(fn: () => Promise<T> | T): Promise<T> {
 }
 
 describe("daemon URL fetch guard", () => {
-  it("blocks local and private network targets", async () => {
-    expect(isBlockedNetworkAddress("127.0.0.1")).toBe(true);
-    expect(isBlockedNetworkAddress("10.1.2.3")).toBe(true);
-    expect(isBlockedNetworkAddress("172.16.0.1")).toBe(true);
-    expect(isBlockedNetworkAddress("192.168.0.1")).toBe(true);
-    expect(isBlockedNetworkAddress("169.254.169.254")).toBe(true);
-    expect(isBlockedNetworkAddress("198.51.100.1")).toBe(true);
-    expect(isBlockedNetworkAddress("203.0.113.1")).toBe(true);
-    expect(isBlockedNetworkAddress("192.0.8.1")).toBe(false);
-    expect(isBlockedNetworkAddress("::1")).toBe(true);
-    expect(isBlockedNetworkAddress("::ffff:127.0.0.1")).toBe(true);
-    expect(isBlockedNetworkAddress("::7f00:1")).toBe(true);
-    expect(isBlockedNetworkAddress("64:ff9b::a9fe:a9fe")).toBe(true);
-    expect(isBlockedNetworkAddress("64:ff9b:1::808:808")).toBe(true);
-    expect(isBlockedNetworkAddress("100::1")).toBe(true);
-    expect(isBlockedNetworkAddress("2001:2::1")).toBe(true);
-    expect(isBlockedNetworkAddress("2002:ac10:1::1")).toBe(true);
-    expect(isBlockedNetworkAddress("3fff::1")).toBe(true);
-    expect(isBlockedNetworkAddress("5f00::1")).toBe(true);
-    expect(isBlockedNetworkAddress("fc00::1")).toBe(true);
-    expect(isBlockedNetworkAddress("fe80::1")).toBe(true);
-    expect(isBlockedNetworkAddress("8.8.8.8")).toBe(false);
-    expect(isBlockedNetworkAddress("64:ff9b::808:808")).toBe(false);
-    expect(isBlockedNetworkAddress("[2606:4700:4700::1111]")).toBe(false);
-  });
-
   it("validates resolved DNS addresses before URL extraction fetches", async () => {
     await expect(
       assertDaemonUrlFetchAllowed("https://public.example/article", {
