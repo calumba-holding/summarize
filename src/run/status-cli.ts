@@ -1,11 +1,13 @@
 import { isOpenRouterBaseUrl } from "@steipete/summarize-core";
 import type { CliProvider, ModelConfig, SummarizeConfig } from "../config.js";
 import { loadSummarizeConfig } from "../config.js";
+import { discoverOpenAiCompatibleModels } from "../daemon/model-discovery.js";
 import { buildModelPickerOptions } from "../daemon/models.js";
 import { resolveCliBinary } from "../llm/cli.js";
-import { resolveGitHubModelsApiKey } from "../llm/github-models.js";
+import { getGatewayProviderProfile, type GatewayProvider } from "../llm/provider-capabilities.js";
 import { resolveCliAvailability, resolveExecutableInPath } from "./env.js";
 import { buildStatusHelp } from "./help.js";
+import { resolveProviderRuntimeBindings } from "./provider-runtime.js";
 import { resolveEnvState } from "./run-env.js";
 
 type StatusModel = {
@@ -50,6 +52,51 @@ const CLI_PROVIDERS: Array<{ id: CliProvider; label: string }> = [
   { id: "agy", label: "Antigravity CLI" },
   { id: "pi", label: "Pi CLI" },
 ];
+
+const API_STATUS_PROVIDERS = [
+  { provider: "xai", id: "xai", label: "xAI API", sources: ["XAI_API_KEY"] },
+  {
+    provider: "google",
+    id: "google",
+    label: "Google Gemini API",
+    sources: ["GEMINI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
+  },
+  {
+    provider: "anthropic",
+    id: "anthropic",
+    label: "Anthropic API",
+    sources: ["ANTHROPIC_API_KEY"],
+  },
+  {
+    provider: "zai",
+    id: "zai",
+    label: "Z.AI API",
+    sources: ["Z_AI_API_KEY", "ZAI_API_KEY"],
+  },
+  {
+    provider: "nvidia",
+    id: "nvidia",
+    label: "NVIDIA API",
+    sources: ["NVIDIA_API_KEY", "NGC_API_KEY"],
+  },
+  {
+    provider: "minimax",
+    id: "minimax",
+    label: "MiniMax API",
+    sources: ["MINIMAX_API_KEY"],
+  },
+  {
+    provider: "github-copilot",
+    id: "github-models",
+    label: "GitHub Models API",
+    sources: ["GITHUB_TOKEN", "GH_TOKEN"],
+  },
+] as const satisfies ReadonlyArray<{
+  provider: Exclude<GatewayProvider, "openai" | "ollama">;
+  id: string;
+  label: string;
+  sources: readonly string[];
+}>;
 
 function nonEmpty(value: string | undefined): string | null {
   const trimmed = value?.trim() ?? "";
@@ -134,6 +181,7 @@ function resolveConfiguredProviders({
 }): StatusProvider[] {
   const providers: StatusProvider[] = [];
   const envState = resolveEnvState({ env, envForRun: env, configForCli: config });
+  const runtime = resolveProviderRuntimeBindings({ env, envState, configForCli: config });
   const openaiBaseUrl = envState.providerBaseUrls.openai;
   const openaiHost = endpointHost(openaiBaseUrl);
   const openaiBaseIsOpenRouter = Boolean(openaiBaseUrl && isOpenRouterBaseUrl(openaiBaseUrl));
@@ -157,7 +205,7 @@ function resolveConfiguredProviders({
       source: firstConfiguredEnv(env, ["OPENAI_BASE_URL"]) ?? undefined,
       endpoint: openaiHost,
     });
-  } else if (envState.openaiApiKey) {
+  } else if (runtime.apiKeys.openai) {
     pushProvider(providers, {
       id: "openai",
       label: "OpenAI API",
@@ -177,81 +225,19 @@ function resolveConfiguredProviders({
       source: firstConfiguredEnv(env, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"]) ?? undefined,
     });
   }
-  if (envState.xaiApiKey) {
+  for (const entry of API_STATUS_PROVIDERS) {
+    if (!runtime.apiKeys[entry.provider]) continue;
+    const baseUrl =
+      runtime.baseUrls[entry.provider] ??
+      getGatewayProviderProfile(entry.provider).defaultBaseUrl ??
+      null;
     pushProvider(providers, {
-      id: "xai",
-      label: "xAI API",
+      id: entry.id,
+      label: entry.label,
       kind: "api",
       state: "configured",
-      source: "XAI_API_KEY",
-      endpoint: endpointHost(envState.providerBaseUrls.xai),
-    });
-  }
-  if (envState.googleApiKey) {
-    pushProvider(providers, {
-      id: "google",
-      label: "Google Gemini API",
-      kind: "api",
-      state: "configured",
-      source:
-        firstConfiguredEnv(env, [
-          "GEMINI_API_KEY",
-          "GOOGLE_GENERATIVE_AI_API_KEY",
-          "GOOGLE_API_KEY",
-        ]) ?? undefined,
-      endpoint: endpointHost(envState.providerBaseUrls.google),
-    });
-  }
-  if (envState.anthropicApiKey) {
-    pushProvider(providers, {
-      id: "anthropic",
-      label: "Anthropic API",
-      kind: "api",
-      state: "configured",
-      source: "ANTHROPIC_API_KEY",
-      endpoint: endpointHost(envState.providerBaseUrls.anthropic),
-    });
-  }
-  if (envState.zaiApiKey) {
-    pushProvider(providers, {
-      id: "zai",
-      label: "Z.AI API",
-      kind: "api",
-      state: "configured",
-      source: firstConfiguredEnv(env, ["Z_AI_API_KEY", "ZAI_API_KEY"]) ?? undefined,
-      endpoint: endpointHost(envState.zaiBaseUrl),
-    });
-  }
-  if (envState.nvidiaApiKey) {
-    pushProvider(providers, {
-      id: "nvidia",
-      label: "NVIDIA API",
-      kind: "api",
-      state: "configured",
-      source: firstConfiguredEnv(env, ["NVIDIA_API_KEY", "NGC_API_KEY"]) ?? undefined,
-      endpoint: endpointHost(envState.nvidiaBaseUrl),
-    });
-  }
-  if (envState.minimaxApiKey) {
-    pushProvider(providers, {
-      id: "minimax",
-      label: "MiniMax API",
-      kind: "api",
-      state: "configured",
-      source: "MINIMAX_API_KEY",
-      endpoint: endpointHost(envState.minimaxBaseUrl),
-    });
-  }
-
-  const githubSource = firstConfiguredEnv(env, ["GITHUB_TOKEN", "GH_TOKEN"]);
-  if (resolveGitHubModelsApiKey(env)) {
-    pushProvider(providers, {
-      id: "github-models",
-      label: "GitHub Models API",
-      kind: "api",
-      state: "configured",
-      source: githubSource ?? undefined,
-      endpoint: "models.github.ai",
+      source: firstConfiguredEnv(env, [...entry.sources]) ?? undefined,
+      endpoint: endpointHost(baseUrl),
     });
   }
 
@@ -296,39 +282,6 @@ function discoveredModels(
     .map((option) => option.id);
 }
 
-async function probeOpenAiCompatibleModels({
-  baseUrl,
-  apiKey,
-  fetchImpl,
-}: {
-  baseUrl: string;
-  apiKey: string | null;
-  fetchImpl: typeof fetch;
-}): Promise<string[]> {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1200);
-  try {
-    const response = await fetchImpl(new URL("models", base).toString(), {
-      headers: apiKey ? { authorization: `Bearer ${apiKey}` } : undefined,
-      signal: controller.signal,
-    });
-    if (!response.ok) return [];
-    const payload = (await response.json()) as { data?: Array<{ id?: unknown }> };
-    return Array.from(
-      new Set(
-        (payload.data ?? [])
-          .map((entry) => (typeof entry.id === "string" ? entry.id.trim() : ""))
-          .filter(Boolean),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function applyProviderProbes({
   providers,
   env,
@@ -368,11 +321,13 @@ async function applyProviderProbes({
 
   if (!providers.some((provider) => provider.id === "ollama")) {
     const envState = resolveEnvState({ env, envForRun: env, configForCli: config });
-    const models = await probeOpenAiCompatibleModels({
+    const discovery = await discoverOpenAiCompatibleModels({
       baseUrl: envState.ollamaBaseUrl,
       apiKey: null,
       fetchImpl,
+      timeoutMs: 1200,
     });
+    const models = discovery?.modelIds ?? [];
     if (models.length > 0) {
       pushProvider(providers, {
         id: "ollama",

@@ -29,7 +29,10 @@ export function resolveProviderRuntimeBindings({
 }): ProviderRuntimeBindings {
   return {
     apiKeys: {
+      xai: envState.xaiApiKey,
       openai: envState.openaiApiKey,
+      google: envState.googleApiKey,
+      anthropic: envState.anthropicApiKey,
       zai: envState.zaiApiKey,
       nvidia: envState.nvidiaApiKey,
       minimax: envState.minimaxApiKey,
@@ -37,7 +40,10 @@ export function resolveProviderRuntimeBindings({
       ollama: null,
     },
     baseUrls: {
+      xai: envState.providerBaseUrls.xai,
       openai: envState.providerBaseUrls.openai,
+      google: envState.providerBaseUrls.google,
+      anthropic: envState.providerBaseUrls.anthropic,
       zai: envState.zaiBaseUrl,
       nvidia: envState.nvidiaBaseUrl,
       minimax: envState.minimaxBaseUrl,

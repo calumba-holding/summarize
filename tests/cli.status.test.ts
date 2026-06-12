@@ -119,6 +119,51 @@ describe("summarize status", () => {
     expect(stderr.getText()).toBe("");
   });
 
+  it("reports shared runtime provider aliases and endpoints", async () => {
+    const home = mkdtempSync(join(tmpdir(), "summarize-status-runtime-"));
+    const stdout = collectStream();
+    const stderr = collectStream();
+
+    await runCli(["status", "--json"], {
+      env: {
+        HOME: home,
+        PATH: "",
+        XAI_API_KEY: "x-secret",
+        XAI_BASE_URL: "https://xai.example/v1",
+        NGC_API_KEY: "nvidia-secret",
+        GH_TOKEN: "github-secret",
+      },
+      fetch: vi.fn() as unknown as typeof fetch,
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+    });
+
+    const report = JSON.parse(stdout.getText()) as {
+      providers: Array<{ id: string; source?: string; endpoint?: string }>;
+    };
+    expect(report.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "xai",
+          source: "XAI_API_KEY",
+          endpoint: "xai.example",
+        }),
+        expect.objectContaining({
+          id: "nvidia",
+          source: "NGC_API_KEY",
+          endpoint: "integrate.api.nvidia.com",
+        }),
+        expect.objectContaining({
+          id: "github-models",
+          source: "GH_TOKEN",
+          endpoint: "models.github.ai",
+        }),
+      ]),
+    );
+    expect(stdout.getText()).not.toContain("secret");
+    expect(stderr.getText()).toBe("");
+  });
+
   it("discovers a usable Ollama server at the default endpoint when probed", async () => {
     const home = mkdtempSync(join(tmpdir(), "summarize-status-probe-"));
     const stdout = collectStream();
