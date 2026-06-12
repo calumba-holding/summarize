@@ -83,6 +83,9 @@ function buildOptions(overrides?: Partial<RunnerExecutionOptions>): RunnerExecut
       onModelChosen("openai/gpt-5.4");
     }),
     runUrlFlowContext: {} as UrlFlowContext,
+    executeUrlSummary: async (options) => {
+      await runUrlFlow(options);
+    },
     ...overrides,
   };
 }

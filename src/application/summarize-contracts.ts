@@ -13,6 +13,7 @@ import type {
   SlideSettings,
   SlideSourceKind,
 } from "../slides/index.js";
+import type { SummarizeExecutionDetails, SummarizeExtractionDetails } from "./url-result.js";
 
 export type SummarizeInput =
   | {
@@ -86,10 +87,12 @@ export type SummaryResult = {
   summary: string;
   usedModel: string;
   extracted: ExtractedLinkContent;
+  slides: SlideExtractionResult | null;
   summaryFromCache: boolean;
   elapsedMs: number;
   report: RunMetricsReport;
   costUsd: number | null;
+  details: SummarizeExecutionDetails;
 };
 
 export type ExtractionResult = {
@@ -97,6 +100,7 @@ export type ExtractionResult = {
   input: Extract<SummarizeInput, { kind: "url" }>;
   extracted: ExtractedLinkContent;
   slides: SlideExtractionResult | null;
+  details: SummarizeExtractionDetails;
 };
 
 export type SummarizeResult = SummaryResult | ExtractionResult;

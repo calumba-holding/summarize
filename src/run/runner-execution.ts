@@ -52,6 +52,11 @@ export type RunnerExecutionOptions = {
   outputExtractedAssetContext: OutputExtractedAssetContext;
   summarizeAsset: (args: SummarizeAssetArgs) => Promise<AssetSummaryResult>;
   runUrlFlowContext: UrlFlowContext;
+  executeUrlSummary: (options: {
+    ctx: UrlFlowContext;
+    url: string;
+    isYoutubeUrl: boolean;
+  }) => Promise<void>;
 };
 
 export async function executeRunnerInput(options: RunnerExecutionOptions) {
@@ -71,7 +76,12 @@ export async function executeRunnerInput(options: RunnerExecutionOptions) {
     outputExtractedAssetContext,
     summarizeAsset,
     runUrlFlowContext,
+    executeUrlSummary,
   } = options;
+  const runResolvedUrl = (ctx: UrlFlowContext, targetUrl: string, targetIsYoutubeUrl: boolean) =>
+    slidesEnabled
+      ? runUrlFlow({ ctx, url: targetUrl, isYoutubeUrl: targetIsYoutubeUrl })
+      : executeUrlSummary({ ctx, url: targetUrl, isYoutubeUrl: targetIsYoutubeUrl });
   const slidesDirectInputUrl =
     slidesEnabled && inputTarget.kind === "file" && isDirectVideoInput(inputTarget.filePath)
       ? pathToFileURL(inputTarget.filePath).href
@@ -126,11 +136,7 @@ export async function executeRunnerInput(options: RunnerExecutionOptions) {
   }
 
   if (slidesDirectInputUrl && inputTarget.kind === "file") {
-    await runUrlFlow({
-      ctx: runUrlFlowContext,
-      url: slidesDirectInputUrl,
-      isYoutubeUrl: false,
-    });
+    await runResolvedUrl(runUrlFlowContext, slidesDirectInputUrl, false);
     return;
   }
 
@@ -190,7 +196,7 @@ export async function executeRunnerInput(options: RunnerExecutionOptions) {
   }
 
   if (slidesDirectInputUrl && inputTarget.kind === "url") {
-    await runUrlFlow({ ctx: runUrlFlowContext, url: slidesDirectInputUrl, isYoutubeUrl });
+    await runResolvedUrl(runUrlFlowContext, slidesDirectInputUrl, isYoutubeUrl);
     return;
   }
 
@@ -199,16 +205,12 @@ export async function executeRunnerInput(options: RunnerExecutionOptions) {
   }
 
   try {
-    await runUrlFlow({ ctx: runUrlFlowContext, url, isYoutubeUrl });
+    await runResolvedUrl(runUrlFlowContext, url, isYoutubeUrl);
   } catch (error) {
     if (hasEngineErrorCode(error, "ASSET_LIKE_HTML_FETCH")) {
       if (await tryUrlAsset(true, true)) return;
       if (canRetryUrlFlowAfterAssetMiss(runUrlFlowContext)) {
-        await runUrlFlow({
-          ctx: allowUrlFlowFirecrawlFallback(runUrlFlowContext),
-          url,
-          isYoutubeUrl,
-        });
+        await runResolvedUrl(allowUrlFlowFirecrawlFallback(runUrlFlowContext), url, isYoutubeUrl);
         return;
       }
     }

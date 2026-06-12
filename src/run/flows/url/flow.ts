@@ -1,3 +1,4 @@
+import { toUrlSummaryPresentationResolution } from "../../../application/url-result.js";
 import type { ExtractedLinkContent } from "../../../content/index.js";
 import { buildUrlPrompt } from "../../../engine/web-prompt.js";
 import type { UrlSummaryResolution } from "../../../engine/web-summary.js";
@@ -469,7 +470,7 @@ async function presentUrlFlowResult(
     prompt: result.prompt,
     effectiveMarkdownMode: result.effectiveMarkdownMode,
     transcriptionCostLabel: presentation.transcriptionCostLabel,
-    resolution: result.resolution,
+    resolution: toUrlSummaryPresentationResolution(result.resolution),
     slides: result.slides,
     slidesOutput: presentation.slidesOutput,
   });

@@ -75,6 +75,7 @@ export type SummarizeExecutionResources = ReturnType<typeof createRunFlowContext
 export type PreparedSummarizeExecution = {
   urlFlowContext: UrlFlowContext;
   assetSummaryContext?: AssetSummaryContext | null;
+  isYoutubeUrl?: boolean;
 };
 
 function chainCallback<Args extends unknown[]>(
@@ -107,6 +108,7 @@ export function bindSummarizeExecutionEvents(
 
   return {
     assetSummaryContext,
+    isYoutubeUrl: prepared.isYoutubeUrl,
     urlFlowContext: {
       ...prepared.urlFlowContext,
       hooks: {

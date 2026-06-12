@@ -9,6 +9,10 @@ import {
   readLastSuccessfulCliProvider,
   writeLastSuccessfulCliProvider,
 } from "../../../application/cli-fallback-state.js";
+import {
+  toUrlSummaryPresentationResolution,
+  type UrlSummaryPresentationResolution,
+} from "../../../application/url-result.js";
 import type { ExtractedLinkContent } from "../../../content/index.js";
 import type { RunMetricsReport } from "../../../costs.js";
 import {
@@ -23,11 +27,7 @@ import { isRichTty, markdownRenderWidth, supportsColor } from "../../terminal.js
 import type { UrlExtractionUi } from "./extract.js";
 import type { SlidesTerminalOutput } from "./slides-output.js";
 import { formatSourceMetricsHeader } from "./source-metrics.js";
-import {
-  buildFinishExtras,
-  buildModelMetaFromAttempt,
-  pickModelForFinishLine,
-} from "./summary-finish.js";
+import { buildFinishExtras, pickModelForFinishLine } from "./summary-finish.js";
 import { buildUrlJsonInput } from "./summary-json.js";
 import type { UrlFlowContext } from "./types.js";
 
@@ -402,14 +402,18 @@ export async function presentExtractedUrlSummary({
   prompt: string;
   effectiveMarkdownMode: "off" | "auto" | "llm" | "readability";
   transcriptionCostLabel: string | null;
-  resolution: UrlSummaryResolution;
+  resolution: UrlSummaryPresentationResolution | UrlSummaryResolution;
   slides?: Awaited<
     ReturnType<typeof import("../../../slides/index.js").extractSlidesForSource>
   > | null;
   slidesOutput?: SlidesTerminalOutput | null;
 }) {
   const { io, flags, hooks } = ctx;
-  if (resolution.kind === "use-extracted") {
+  const presentationResolution =
+    resolution.kind === "summary" && "llm" in resolution
+      ? resolution
+      : toUrlSummaryPresentationResolution(resolution);
+  if (presentationResolution.kind === "use-extracted") {
     await outputSummaryFromExtractedContent({
       ctx,
       url,
@@ -419,19 +423,12 @@ export async function presentExtractedUrlSummary({
       effectiveMarkdownMode,
       transcriptionCostLabel,
       slides,
-      footerLabel: resolution.footerLabel,
-      verboseMessage: resolution.verboseMessage,
+      footerLabel: presentationResolution.footerLabel,
+      verboseMessage: presentationResolution.verboseMessage,
     });
     return;
   }
-  const {
-    normalizedSummary,
-    summaryEmitted,
-    summaryFromCache,
-    usedAttempt,
-    modelMeta,
-    maxOutputTokensForCall,
-  } = resolution;
+  const { normalizedSummary, summaryEmitted, summaryFromCache, llm } = presentationResolution;
 
   if (flags.json) {
     const finishReport = await writeUrlJsonOutput({
@@ -443,9 +440,9 @@ export async function presentExtractedUrlSummary({
       slides,
       summary: normalizedSummary,
       llm: {
-        provider: modelMeta.provider,
-        model: usedAttempt.userModelId,
-        maxCompletionTokens: maxOutputTokensForCall,
+        provider: llm.provider,
+        model: llm.model,
+        maxCompletionTokens: llm.maxCompletionTokens,
         strategy: "single",
       },
     });
@@ -456,7 +453,7 @@ export async function presentExtractedUrlSummary({
       transcriptionCostLabel,
       label: extractionUi.finishSourceLabel,
       elapsedLabel: summaryFromCache ? "Cached" : null,
-      model: usedAttempt.userModelId,
+      model: llm.model,
     });
     return;
   }
@@ -509,6 +506,6 @@ export async function presentExtractedUrlSummary({
     transcriptionCostLabel,
     label: extractionUi.finishSourceLabel,
     elapsedLabel: summaryFromCache ? "Cached" : null,
-    model: modelMeta.canonical,
+    model: llm.canonical,
   });
 }

@@ -21,6 +21,11 @@ import type {
   SummarizeRuntime,
   SummaryResult,
 } from "./summarize-contracts.js";
+import {
+  toUrlSummaryPresentationResolution,
+  type SummarizeExecutionDetails,
+  type SummarizeExtractionDetails,
+} from "./url-result.js";
 import { createSummarizeUrlFlowContext } from "./url-runtime.js";
 
 const ignoreEvent: SummarizeEventSink = () => {};
@@ -163,6 +168,8 @@ export async function executeSummarize(
   let normalizedSummary: string | null = null;
   let extracted: ExtractedLinkContent | null = null;
   let slides: ExtractionResult["slides"] = null;
+  let summaryDetails: SummarizeExecutionDetails = { kind: "visible-page" };
+  let extractionDetails: SummarizeExtractionDetails | null = null;
 
   const emit = (event: SummarizeEvent) => {
     if (event.type === "model-selected") {
@@ -215,7 +222,7 @@ export async function executeSummarize(
       const urlResult = await executeUrlFlow({
         ctx,
         url: request.input.url,
-        isYoutubeUrl: isYouTubeUrl(request.input.url),
+        isYoutubeUrl: prepared?.isYoutubeUrl ?? isYouTubeUrl(request.input.url),
       });
       extracted = urlResult.extracted;
       if (!slides) slides = urlResult.slides;
@@ -224,17 +231,33 @@ export async function executeSummarize(
           throw new Error("Internal error: summary execution returned extraction result");
         }
         if (urlResult.kind === "summary") {
+          summaryDetails = {
+            kind: "url-summary",
+            prompt: urlResult.prompt,
+            effectiveMarkdownMode: urlResult.effectiveMarkdownMode,
+            resolution: toUrlSummaryPresentationResolution(urlResult.resolution),
+          };
           normalizedSummary = emitResolvedSummary({
             resolution: urlResult.resolution,
             extracted,
             emit,
           });
         } else {
+          summaryDetails = {
+            kind: "delegated-asset",
+            summaryEmitted: urlResult.summary.summaryEmitted,
+          };
           normalizedSummary = urlResult.summary.summary;
           if (!urlResult.summary.summaryEmitted) {
             emitNormalizedSummary(normalizedSummary, emit);
           }
         }
+      } else if (urlResult.kind === "extraction") {
+        extractionDetails = {
+          kind: "url-extraction",
+          prompt: urlResult.prompt,
+          effectiveMarkdownMode: urlResult.effectiveMarkdownMode,
+        };
       }
     }
 
@@ -243,11 +266,15 @@ export async function executeSummarize(
     }
 
     if (request.extractOnly) {
+      if (!extractionDetails) {
+        throw new Error("Internal error: missing extraction details");
+      }
       const result: ExtractionResult = {
         kind: "extraction",
         input: request.input as Extract<SummarizeRequest["input"], { kind: "url" }>,
         extracted,
         slides,
+        details: extractionDetails,
       };
       emit({ type: "run-completed", result });
       return result;
@@ -259,10 +286,12 @@ export async function executeSummarize(
       summary: normalizedSummary ?? summaryText.replace(/\n$/, ""),
       usedModel: usedModel ?? ctx.model.requestedModelLabel,
       extracted,
+      slides,
       summaryFromCache,
       elapsedMs: now() - startedAt,
       report: await ctx.hooks.buildReport(),
       costUsd: await ctx.hooks.estimateCostUsd(),
+      details: summaryDetails,
     };
     emit({ type: "run-completed", result });
     return result;
