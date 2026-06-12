@@ -7,22 +7,25 @@ type SlidesTextViewState = {
   getTextToggleVisible: () => boolean;
 };
 
+type SummarizeControlActions = {
+  onSlidesTextModeChange: (value: SlideTextMode) => void;
+  onChange: (value: { mode: "page" | "video"; slides: boolean }) => void | Promise<void>;
+  onSummarize: () => void;
+};
+
 export function createSummarizeControlView({
   root,
   panelState,
   slidesTextController,
-  onSlidesTextModeChange,
-  onChange,
-  onSummarize,
 }: {
   root: HTMLElement;
   panelState: PanelState;
   slidesTextController: SlidesTextViewState;
-  onSlidesTextModeChange: (value: SlideTextMode) => void;
-  onChange: (value: { mode: "page" | "video"; slides: boolean }) => void | Promise<void>;
-  onSummarize: () => void;
 }) {
-  const buildProps = () => {
+  let actions: SummarizeControlActions | null = null;
+  let control: ReturnType<typeof mountSummarizeControl> | null = null;
+
+  const buildProps = (boundActions: SummarizeControlActions) => {
     const state = panelState.slidesSession;
     return {
       mode: state.inputMode,
@@ -34,17 +37,19 @@ export function createSummarizeControlView({
       videoDurationSeconds: state.summarizeVideoDurationSeconds,
       slidesTextMode: slidesTextController.getTextMode(),
       slidesTextToggleVisible: slidesTextController.getTextToggleVisible(),
-      onSlidesTextModeChange,
-      onChange,
-      onSummarize,
+      ...boundActions,
     };
   };
 
-  const control = mountSummarizeControl(root, buildProps());
-
   return {
+    bindActions(nextActions: SummarizeControlActions) {
+      if (control) return;
+      actions = nextActions;
+      control = mountSummarizeControl(root, buildProps(nextActions));
+    },
     refresh() {
-      control.update(buildProps());
+      if (!control || !actions) return;
+      control.update(buildProps(actions));
     },
   };
 }

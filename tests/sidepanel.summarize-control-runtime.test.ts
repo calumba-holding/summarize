@@ -131,6 +131,11 @@ function buildRuntime(
     setTextMode: vi.fn(() => overrides.slidesTextSetResult ?? true),
   };
 
+  const view = createSummarizeControlView({
+    root: {} as HTMLElement,
+    panelState: panelStateStore.state,
+    slidesTextController,
+  });
   const runtime = createSummarizeControlRuntime({
     renderMarkdownHostEl,
     renderSlidesHostEl,
@@ -156,10 +161,7 @@ function buildRuntime(
     queueSlidesRender: calls.queueSlidesRender,
     applySlidesRendererLayout: calls.applySlidesRendererLayout,
   });
-  const view = createSummarizeControlView({
-    root: {} as HTMLElement,
-    panelState: panelStateStore.state,
-    slidesTextController,
+  view.bindActions({
     onSlidesTextModeChange: runtime.handleSlidesTextModeChange,
     onChange: runtime.handleSummarizeControlChange,
     onSummarize: () => calls.sendSummarize(),
@@ -183,6 +185,37 @@ describe("sidepanel summarize control runtime", () => {
     vi.restoreAllMocks();
     summarizeControlUpdate.mockReset();
     currentProps = null;
+  });
+
+  it("mounts only after actions bind and ignores later bindings", () => {
+    const firstSummarize = vi.fn();
+    const secondSummarize = vi.fn();
+    const view = createSummarizeControlView({
+      root: {} as HTMLElement,
+      panelState: createInitialPanelState(),
+      slidesTextController: {
+        getTextMode: () => "transcript",
+        getTextToggleVisible: () => false,
+      },
+    });
+
+    view.refresh();
+    expect(currentProps).toBeNull();
+
+    view.bindActions({
+      onSlidesTextModeChange: vi.fn(),
+      onChange: vi.fn(),
+      onSummarize: firstSummarize,
+    });
+    view.bindActions({
+      onSlidesTextModeChange: vi.fn(),
+      onChange: vi.fn(),
+      onSummarize: secondSummarize,
+    });
+    currentProps?.onSummarize();
+
+    expect(firstSummarize).toHaveBeenCalledOnce();
+    expect(secondSummarize).not.toHaveBeenCalled();
   });
 
   it("refreshes the mounted control from canonical panel state", () => {

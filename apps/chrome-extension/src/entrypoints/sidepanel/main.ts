@@ -40,7 +40,7 @@ import { createSetupControlsRuntime } from "./setup-controls-runtime";
 import { friendlyFetchError } from "./setup-runtime";
 import { createSidepanelSlidesRuntime } from "./slides-runtime";
 import { resolveSlidesInputMode } from "./slides-session-state";
-import { selectMarkdownForLayout, type SlideTextMode } from "./slides-state";
+import { selectMarkdownForLayout } from "./slides-state";
 import { createSlidesTextController, type SlideSummarySource } from "./slides-text-controller";
 import { createSlidesViewRuntime } from "./slides-view-runtime";
 import { createSummarizeCommand } from "./summarize-command";
@@ -208,10 +208,6 @@ const slidesTextController = createSlidesTextController({
   getSlidesOcrEnabled: () => getSlidesState().slidesOcrEnabled,
 });
 
-function stopSlidesStream() {
-  slidesRuntime.stopSlidesStream();
-}
-
 function setSlidesTranscriptTimedText(value: string | null) {
   slidesTextController.setTranscriptTimedText(value);
 }
@@ -229,28 +225,6 @@ renderEl.addEventListener("click", (event) => {
   if (seconds == null) return;
   void send({ type: "panel:seek", seconds });
 });
-
-async function handleSummarizeControlChange(value: { mode: "page" | "video"; slides: boolean }) {
-  await summarizeControlRuntime.handleSummarizeControlChange(value);
-  refreshSummarizeControl();
-}
-
-function handleSlidesTextModeChange(value: SlideTextMode) {
-  summarizeControlRuntime.handleSlidesTextModeChange(value);
-  refreshSummarizeControl();
-}
-
-function applySlidesLayout() {
-  summarizeControlRuntime.applySlidesLayout();
-}
-
-function setSlidesLayout(next: SlidesLayout) {
-  summarizeControlRuntime.setSlidesLayout(next);
-}
-
-function refreshSummarizeControl() {
-  summarizeControlView.refresh();
-}
 
 const isStreaming = () => panelState.phase === "connecting" || panelState.phase === "streaming";
 
@@ -293,10 +267,8 @@ const summarizeControlView = createSummarizeControlView({
   root: summarizeControlRoot,
   panelState,
   slidesTextController,
-  onSlidesTextModeChange: handleSlidesTextModeChange,
-  onChange: handleSummarizeControlChange,
-  onSummarize: sendSummarize,
 });
+const refreshSummarizeControl = summarizeControlView.refresh;
 
 const panelCacheController = createPanelCacheController({
   getSnapshot: () =>
@@ -369,6 +341,7 @@ const {
   startSlidesStream,
   startSlidesStreamForRunId,
   startSlidesSummaryStreamForRunId,
+  stopSlidesStream,
 } = slidesRuntime;
 
 const summarizeControlRuntime = createSummarizeControlRuntime({
@@ -403,6 +376,18 @@ const summarizeControlRuntime = createSummarizeControlRuntime({
   applySlidesRendererLayout: () => {
     slidesViewRuntime.slidesRenderer.applyLayout();
   },
+});
+const { applySlidesLayout, setSlidesLayout } = summarizeControlRuntime;
+summarizeControlView.bindActions({
+  onSlidesTextModeChange: (value) => {
+    summarizeControlRuntime.handleSlidesTextModeChange(value);
+    refreshSummarizeControl();
+  },
+  onChange: async (value) => {
+    await summarizeControlRuntime.handleSummarizeControlChange(value);
+    refreshSummarizeControl();
+  },
+  onSummarize: sendSummarize,
 });
 
 const phaseRuntime = createPanelPhaseRuntime({
@@ -599,7 +584,8 @@ registerSidepanelTestHooks({
     updateSlidesTextState();
   },
   setSummarizeMode: async (payload) => {
-    await handleSummarizeControlChange(payload);
+    await summarizeControlRuntime.handleSummarizeControlChange(payload);
+    refreshSummarizeControl();
   },
   getSummarizeMode: () => ({
     mode: resolveSlidesInputMode(getSlidesState()),
