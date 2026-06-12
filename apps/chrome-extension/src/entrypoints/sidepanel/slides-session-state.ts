@@ -22,13 +22,13 @@ export type SlidesSessionState = {
   slidesAppliedRunId: string | null;
 };
 
-export function createSlidesSessionStore(options: {
+export function createInitialSlidesSessionState(options: {
   slidesEnabled: boolean;
   slidesParallel: boolean;
   slidesOcrEnabled: boolean;
   slidesLayout: SlidesLayout;
-}) {
-  const state: SlidesSessionState = {
+}): SlidesSessionState {
+  return {
     slidesEnabled: options.slidesEnabled,
     slidesParallel: options.slidesParallel,
     slidesOcrEnabled: options.slidesOcrEnabled,
@@ -47,15 +47,8 @@ export function createSlidesSessionStore(options: {
     slidesSeededSourceId: null,
     slidesAppliedRunId: null,
   };
+}
 
-  return {
-    state,
-    resolveInputMode(): InputMode {
-      return state.inputModeOverride ?? state.inputMode;
-    },
-    nextSlidesContextRequestId(): number {
-      state.slidesContextRequestId += 1;
-      return state.slidesContextRequestId;
-    },
-  };
+export function resolveSlidesInputMode(state: SlidesSessionState): InputMode {
+  return state.inputModeOverride ?? state.inputMode;
 }

@@ -1,3 +1,5 @@
+import { defaultSettings } from "../../lib/settings";
+import { createInitialSlidesSessionState } from "./slides-session-state";
 import type { PanelState } from "./types";
 
 export type PanelStateAction =
@@ -21,6 +23,8 @@ export type PanelStateAction =
     }
   | { type: "active-slides-run"; value: PanelState["slidesLifecycle"]["activeRun"] }
   | { type: "planned-slides-run"; value: PanelState["slidesLifecycle"]["plannedRun"] }
+  | { type: "slides-session-update"; value: Partial<PanelState["slidesSession"]> }
+  | { type: "slides-context-request-next" }
   | { type: "source"; source: PanelState["currentSource"] }
   | { type: "meta"; meta: PanelState["lastMeta"] }
   | { type: "summary"; markdown: string | null }
@@ -68,6 +72,12 @@ export function createInitialPanelState(): PanelState {
       activeRun: null,
       plannedRun: null,
     },
+    slidesSession: createInitialSlidesSessionState({
+      slidesEnabled: defaultSettings.slidesEnabled,
+      slidesParallel: defaultSettings.slidesParallel,
+      slidesOcrEnabled: defaultSettings.slidesOcrEnabled,
+      slidesLayout: defaultSettings.slidesLayout,
+    }),
     runId: null,
     slidesRunId: null,
     currentSource: null,
@@ -142,6 +152,22 @@ export function reducePanelState(state: PanelState, action: PanelStateAction): P
         slidesLifecycle: {
           ...state.slidesLifecycle,
           plannedRun: action.value,
+        },
+      };
+    case "slides-session-update":
+      return {
+        ...state,
+        slidesSession: {
+          ...state.slidesSession,
+          ...action.value,
+        },
+      };
+    case "slides-context-request-next":
+      return {
+        ...state,
+        slidesSession: {
+          ...state.slidesSession,
+          slidesContextRequestId: state.slidesSession.slidesContextRequestId + 1,
         },
       };
     case "source":

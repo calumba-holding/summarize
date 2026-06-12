@@ -1,39 +1,12 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import type { PanelCachePayload } from "../apps/chrome-extension/src/entrypoints/sidepanel/panel-cache";
+import { createInitialPanelState } from "../apps/chrome-extension/src/entrypoints/sidepanel/panel-state-store";
 import { createSummaryViewRuntime } from "../apps/chrome-extension/src/entrypoints/sidepanel/summary-view-runtime";
 import type { PanelState } from "../apps/chrome-extension/src/entrypoints/sidepanel/types";
 
 function createPanelState(): PanelState {
-  return {
-    ui: null,
-    navigation: {
-      activeTabId: null,
-      activeTabUrl: null,
-    },
-    activeRun: {
-      tabId: null,
-    },
-    pendingRuns: {
-      summaryByUrl: {},
-      slidesByUrl: {},
-    },
-    slidesLifecycle: {
-      activeRun: null,
-      plannedRun: null,
-    },
-    runId: null,
-    slidesRunId: null,
-    currentSource: null,
-    lastMeta: { inputSummary: null, model: null, modelLabel: null },
-    summaryMarkdown: null,
-    summaryFromCache: null,
-    retainedSlideSummary: null,
-    slides: null,
-    phase: "idle",
-    error: null,
-    chatStreaming: false,
-  };
+  return createInitialPanelState();
 }
 
 function createCachePayload(overrides: Partial<PanelCachePayload> = {}): PanelCachePayload {

@@ -107,6 +107,23 @@ describe("sidepanel panel state store", () => {
     expect(store.state.slidesLifecycle).toEqual({ activeRun: null, plannedRun: null });
   });
 
+  it("updates slides session state and advances request identity", () => {
+    const store = createPanelStateStore();
+
+    store.dispatch({
+      type: "slides-session-update",
+      value: { inputMode: "video", slidesBusy: true },
+    });
+    store.dispatch({ type: "slides-context-request-next" });
+    store.dispatch({ type: "slides-context-request-next" });
+
+    expect(store.state.slidesSession).toMatchObject({
+      inputMode: "video",
+      slidesBusy: true,
+      slidesContextRequestId: 2,
+    });
+  });
+
   it("restores cached sessions without replacing omitted slides", () => {
     const store = createPanelStateStore();
     store.dispatch({
