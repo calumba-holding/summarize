@@ -98,6 +98,10 @@ describe("sidepanel panel state store", () => {
     });
     store.dispatch({ type: "summary", markdown: "Summary" });
     store.dispatch({ type: "summary-cache", value: true });
+    store.dispatch({
+      type: "retained-slide-summary",
+      value: { markdown: "Retained", url: "https://example.com" },
+    });
     store.dispatch({ type: "reset-summary", clearRunId: true, clearSlides: true });
 
     expect(store.state).toMatchObject({
@@ -108,5 +112,12 @@ describe("sidepanel panel state store", () => {
       summaryFromCache: null,
       slides: null,
     });
+    expect(store.state.retainedSlideSummary).toEqual({
+      markdown: "Retained",
+      url: "https://example.com",
+    });
+
+    store.dispatch({ type: "retained-slide-summary", value: null });
+    expect(store.state.retainedSlideSummary).toBeNull();
   });
 });

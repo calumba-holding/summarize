@@ -171,11 +171,6 @@ const panelState = panelStateStore.state;
 const getActiveTabId = () => panelState.navigation.activeTabId;
 const getActiveTabUrl = () => panelState.navigation.activeTabUrl;
 
-let retainedSlideSummary: {
-  markdown: string;
-  url: string | null;
-} | null = null;
-
 const panelPortRuntime = createPanelPortRuntime<BgToPanel>({
   onMessage: (msg) => {
     handleBgMessage(msg);
@@ -384,13 +379,17 @@ function getSummaryScopeUrl() {
 function rememberSlideSummaryMarkdown(markdown: string) {
   const trimmed = markdown.trim();
   if (!trimmed) return;
-  retainedSlideSummary = {
-    markdown,
-    url: getSummaryScopeUrl(),
-  };
+  panelStateStore.dispatch({
+    type: "retained-slide-summary",
+    value: {
+      markdown,
+      url: getSummaryScopeUrl(),
+    },
+  });
 }
 
 function getRetainedSlideSummaryMarkdown() {
+  const retainedSlideSummary = panelState.retainedSlideSummary;
   if (!retainedSlideSummary) return null;
   const currentUrl = getSummaryScopeUrl();
   if (
@@ -832,7 +831,7 @@ async function migrateChatHistory(
 const syncWithActiveTab = () => navigationRuntime.syncWithActiveTab();
 
 async function clearCurrentView() {
-  retainedSlideSummary = null;
+  panelStateStore.dispatch({ type: "retained-slide-summary", value: null });
   if (panelState.chatStreaming) {
     requestAgentAbort("Cleared");
   }

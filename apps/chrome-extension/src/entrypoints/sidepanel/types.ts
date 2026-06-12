@@ -22,6 +22,10 @@ export type PanelState = {
   lastMeta: { inputSummary: string | null; model: string | null; modelLabel: string | null };
   summaryMarkdown: string | null;
   summaryFromCache: boolean | null;
+  retainedSlideSummary: {
+    markdown: string;
+    url: string | null;
+  } | null;
   slides: SseSlidesData | null;
   phase: PanelPhase;
   error: string | null;

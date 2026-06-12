@@ -13,6 +13,7 @@ export type PanelStateAction =
   | { type: "meta"; meta: PanelState["lastMeta"] }
   | { type: "summary"; markdown: string | null }
   | { type: "summary-cache"; value: boolean | null }
+  | { type: "retained-slide-summary"; value: PanelState["retainedSlideSummary"] }
   | { type: "slides"; slides: PanelState["slides"] }
   | { type: "slides-run"; runId: string | null }
   | { type: "chat-streaming"; value: boolean }
@@ -52,6 +53,7 @@ export function createInitialPanelState(): PanelState {
     lastMeta: { inputSummary: null, model: null, modelLabel: null },
     summaryMarkdown: null,
     summaryFromCache: null,
+    retainedSlideSummary: null,
     slides: null,
     phase: "idle",
     error: null,
@@ -93,6 +95,8 @@ export function reducePanelState(state: PanelState, action: PanelStateAction): P
       return { ...state, summaryMarkdown: action.markdown };
     case "summary-cache":
       return { ...state, summaryFromCache: action.value };
+    case "retained-slide-summary":
+      return { ...state, retainedSlideSummary: action.value };
     case "slides":
       return { ...state, slides: action.slides };
     case "slides-run":
