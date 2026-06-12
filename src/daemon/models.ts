@@ -1,13 +1,92 @@
 import { getModels } from "@earendil-works/pi-ai";
 import { isOpenRouterBaseUrl } from "@steipete/summarize-core";
-import type { SummarizeConfig } from "../config.js";
+import type { CliProvider, SummarizeConfig } from "../config.js";
+import type { GatewayProvider } from "../llm/provider-capabilities.js";
 import { resolveCliAvailability } from "../run/env.js";
 import { resolveEnvState } from "../run/run-env.js";
+import { discoverOpenAiCompatibleModels } from "./model-discovery.js";
 
 export type ModelPickerOption = {
   id: string;
   label: string;
 };
+
+type ModelPickerProviders = {
+  xai: boolean;
+  openai: boolean;
+  nvidia: boolean;
+  minimax: boolean;
+  google: boolean;
+  anthropic: boolean;
+  openrouter: boolean;
+  zai: boolean;
+  ollama: boolean;
+  cliClaude: boolean;
+  cliGemini: boolean;
+  cliCodex: boolean;
+  cliAgent: boolean;
+  cliOpenclaw: boolean;
+  cliOpencode: boolean;
+  cliCopilot: boolean;
+  cliAgy: boolean;
+  cliPi: boolean;
+};
+
+const CLI_PICKER_OPTIONS = [
+  { provider: "claude", status: "cliClaude", id: "cli/claude", label: "CLI: Claude" },
+  { provider: "gemini", status: "cliGemini", id: "cli/gemini", label: "CLI: Gemini" },
+  { provider: "codex", status: "cliCodex", id: "cli/codex", label: "CLI: Codex" },
+  { provider: "agent", status: "cliAgent", id: "cli/agent", label: "CLI: Cursor Agent" },
+  {
+    provider: "openclaw",
+    status: "cliOpenclaw",
+    id: "cli/openclaw",
+    label: "CLI: OpenClaw",
+  },
+  {
+    provider: "opencode",
+    status: "cliOpencode",
+    id: "cli/opencode",
+    label: "CLI: OpenCode",
+  },
+  {
+    provider: "copilot",
+    status: "cliCopilot",
+    id: "cli/copilot",
+    label: "CLI: GitHub Copilot",
+  },
+  { provider: "agy", status: "cliAgy", id: "cli/agy", label: "CLI: Antigravity (agy)" },
+  { provider: "pi", status: "cliPi", id: "cli/pi", label: "CLI: pi" },
+] as const satisfies ReadonlyArray<{
+  provider: CliProvider;
+  status: keyof ModelPickerProviders;
+  id: string;
+  label: string;
+}>;
+
+const CATALOG_PICKER_PROVIDERS = [
+  {
+    provider: "openrouter",
+    status: "openrouter",
+    prefix: "openrouter/",
+    labelPrefix: "OpenRouter: ",
+  },
+  { provider: "openai", status: "openai", prefix: "openai/", labelPrefix: "OpenAI: " },
+  {
+    provider: "anthropic",
+    status: "anthropic",
+    prefix: "anthropic/",
+    labelPrefix: "Anthropic: ",
+  },
+  { provider: "google", status: "google", prefix: "google/", labelPrefix: "Google: " },
+  { provider: "xai", status: "xai", prefix: "xai/", labelPrefix: "xAI: " },
+  { provider: "zai", status: "zai", prefix: "zai/", labelPrefix: "Z.AI: " },
+] as const satisfies ReadonlyArray<{
+  provider: Parameters<typeof getModels>[0];
+  status: keyof ModelPickerProviders;
+  prefix: string;
+  labelPrefix: string;
+}>;
 
 function uniqById(options: ModelPickerOption[]): ModelPickerOption[] {
   const seen = new Set<string>();
@@ -28,16 +107,6 @@ function isProbablyOpenRouterBaseUrl(baseUrl: string): boolean {
 
 function isProbablyZaiBaseUrl(baseUrl: string): boolean {
   return /api\.z\.ai/i.test(baseUrl);
-}
-
-function describeBaseUrlHost(baseUrl: string): string | null {
-  try {
-    const url = new URL(baseUrl);
-    const host = url.host.trim();
-    return host.length > 0 ? host : null;
-  } catch {
-    return null;
-  }
 }
 
 function pushPiAiModels({
@@ -61,56 +130,37 @@ function pushPiAiModels({
   }
 }
 
-async function discoverOpenAiCompatibleModelIds({
+async function appendDiscoveredOpenAiCompatibleModels({
+  options,
+  provider,
+  label,
   baseUrl,
   apiKey,
   fetchImpl,
   timeoutMs,
 }: {
+  options: ModelPickerOption[];
+  provider: Extract<GatewayProvider, "openai" | "nvidia" | "minimax" | "ollama">;
+  label: string;
   baseUrl: string;
   apiKey: string | null;
   fetchImpl: typeof fetch;
   timeoutMs: number;
-}): Promise<string[]> {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const modelsUrl = new URL("models", base).toString();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetchImpl(modelsUrl, {
-      method: "GET",
-      headers: apiKey ? { authorization: `Bearer ${apiKey}` } : undefined,
-      signal: controller.signal,
+}): Promise<{ baseUrlHost: string; count: number } | null> {
+  const result = await discoverOpenAiCompatibleModels({
+    baseUrl,
+    apiKey,
+    fetchImpl,
+    timeoutMs,
+  });
+  if (!result) return null;
+  for (const id of result.modelIds) {
+    options.push({
+      id: `${provider}/${id}`,
+      label: `${label} (${result.baseUrlHost}): ${id}`,
     });
-    if (!res.ok) return [];
-    const json = (await res.json()) as unknown;
-    if (!json || typeof json !== "object") return [];
-
-    const obj = json as Record<string, unknown>;
-    const data = obj.data;
-    if (Array.isArray(data)) {
-      const ids = data
-        .map((item) => (item && typeof item === "object" ? (item as { id?: unknown }).id : null))
-        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-        .map((id) => id.trim());
-      return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
-    }
-
-    const models = obj.models;
-    if (Array.isArray(models)) {
-      const ids = models
-        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-        .map((id) => id.trim());
-      return Array.from(new Set(ids)).sort((a, b) => a.localeCompare(b));
-    }
-
-    return [];
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeout);
   }
+  return { baseUrlHost: result.baseUrlHost, count: result.modelIds.length };
 }
 
 export async function buildModelPickerOptions({
@@ -126,26 +176,7 @@ export async function buildModelPickerOptions({
 }): Promise<{
   ok: true;
   options: ModelPickerOption[];
-  providers: {
-    xai: boolean;
-    openai: boolean;
-    nvidia: boolean;
-    minimax: boolean;
-    google: boolean;
-    anthropic: boolean;
-    openrouter: boolean;
-    zai: boolean;
-    ollama: boolean;
-    cliClaude: boolean;
-    cliGemini: boolean;
-    cliCodex: boolean;
-    cliAgent: boolean;
-    cliOpenclaw: boolean;
-    cliOpencode: boolean;
-    cliCopilot: boolean;
-    cliAgy: boolean;
-    cliPi: boolean;
-  };
+  providers: ModelPickerProviders;
   openaiBaseUrl: string | null;
   localModelsSource: { kind: "openai-compatible"; baseUrlHost: string } | null;
 }> {
@@ -172,15 +203,6 @@ export async function buildModelPickerOptions({
     cliPi: false,
   };
   const cliAvailability = resolveCliAvailability({ env: envForRun, config: configForCli });
-  providers.cliClaude = Boolean(cliAvailability.claude);
-  providers.cliGemini = Boolean(cliAvailability.gemini);
-  providers.cliCodex = Boolean(cliAvailability.codex);
-  providers.cliAgent = Boolean(cliAvailability.agent);
-  providers.cliOpenclaw = Boolean(cliAvailability.openclaw);
-  providers.cliOpencode = Boolean(cliAvailability.opencode);
-  providers.cliCopilot = Boolean(cliAvailability.copilot);
-  providers.cliAgy = Boolean(cliAvailability.agy);
-  providers.cliPi = Boolean(cliAvailability.pi);
 
   const options: ModelPickerOption[] = [
     { id: "auto", label: "Auto" },
@@ -188,147 +210,74 @@ export async function buildModelPickerOptions({
     { id: "codex-fast", label: "GPT Fast (Codex)" },
   ];
 
-  if (providers.cliClaude) {
-    options.push({ id: "cli/claude", label: "CLI: Claude" });
-  }
-  if (providers.cliGemini) {
-    options.push({ id: "cli/gemini", label: "CLI: Gemini" });
-  }
-  if (providers.cliCodex) {
-    options.push({ id: "cli/codex", label: "CLI: Codex" });
-  }
-  if (providers.cliAgent) {
-    options.push({ id: "cli/agent", label: "CLI: Cursor Agent" });
-  }
-  if (providers.cliOpenclaw) {
-    options.push({ id: "cli/openclaw", label: "CLI: OpenClaw" });
-  }
-  if (providers.cliOpencode) {
-    options.push({ id: "cli/opencode", label: "CLI: OpenCode" });
-  }
-  if (providers.cliCopilot) {
-    options.push({ id: "cli/copilot", label: "CLI: GitHub Copilot" });
-  }
-  if (providers.cliAgy) {
-    options.push({ id: "cli/agy", label: "CLI: Antigravity (agy)" });
-  }
-  if (providers.cliPi) {
-    options.push({ id: "cli/pi", label: "CLI: pi" });
-  }
-
-  if (providers.openrouter) {
-    options.push({ id: "free", label: "Free (OpenRouter)" });
-    pushPiAiModels({
-      options,
-      provider: "openrouter",
-      prefix: "openrouter/",
-      labelPrefix: "OpenRouter: ",
-    });
-  }
-
-  if (providers.openai) {
-    pushPiAiModels({
-      options,
-      provider: "openai",
-      prefix: "openai/",
-      labelPrefix: "OpenAI: ",
-    });
-  }
-
-  if (providers.anthropic) {
-    pushPiAiModels({
-      options,
-      provider: "anthropic",
-      prefix: "anthropic/",
-      labelPrefix: "Anthropic: ",
-    });
-  }
-
-  if (providers.google) {
-    pushPiAiModels({
-      options,
-      provider: "google",
-      prefix: "google/",
-      labelPrefix: "Google: ",
-    });
-  }
-
-  if (providers.xai) {
-    pushPiAiModels({
-      options,
-      provider: "xai",
-      prefix: "xai/",
-      labelPrefix: "xAI: ",
-    });
-  }
-
-  if (providers.zai) {
-    pushPiAiModels({
-      options,
-      provider: "zai",
-      prefix: "zai/",
-      labelPrefix: "Z.AI: ",
-    });
-  }
-
-  if (providers.nvidia) {
-    const baseUrl = envState.nvidiaBaseUrl;
-    const baseUrlHost = describeBaseUrlHost(baseUrl);
-    if (baseUrlHost) {
-      const discovered = await discoverOpenAiCompatibleModelIds({
-        baseUrl,
-        apiKey: envState.nvidiaApiKey,
-        fetchImpl,
-        timeoutMs: 1200,
-      });
-      for (const id of discovered) {
-        options.push({ id: `nvidia/${id}`, label: `NVIDIA (${baseUrlHost}): ${id}` });
-      }
+  for (const entry of CLI_PICKER_OPTIONS) {
+    const available = Boolean(cliAvailability[entry.provider]);
+    providers[entry.status] = available;
+    if (available) {
+      options.push({ id: entry.id, label: entry.label });
     }
   }
 
-  if (providers.minimax) {
-    const baseUrl = envState.minimaxBaseUrl;
-    const baseUrlHost = describeBaseUrlHost(baseUrl);
-    if (baseUrlHost) {
-      const discovered = await discoverOpenAiCompatibleModelIds({
-        baseUrl,
-        apiKey: envState.minimaxApiKey,
+  for (const entry of CATALOG_PICKER_PROVIDERS) {
+    if (!providers[entry.status]) continue;
+    if (entry.provider === "openrouter") {
+      options.push({ id: "free", label: "Free (OpenRouter)" });
+    }
+    pushPiAiModels({
+      options,
+      provider: entry.provider,
+      prefix: entry.prefix,
+      labelPrefix: entry.labelPrefix,
+    });
+  }
+
+  const discoveryProviders = [
+    {
+      provider: "nvidia",
+      label: "NVIDIA",
+      enabled: providers.nvidia,
+      baseUrl: envState.nvidiaBaseUrl,
+      apiKey: envState.nvidiaApiKey,
+    },
+    {
+      provider: "minimax",
+      label: "MiniMax",
+      enabled: providers.minimax,
+      baseUrl: envState.minimaxBaseUrl,
+      apiKey: envState.minimaxApiKey,
+    },
+  ] as const;
+  for (const entry of discoveryProviders) {
+    if (entry.enabled) {
+      await appendDiscoveredOpenAiCompatibleModels({
+        options,
+        provider: entry.provider,
+        label: entry.label,
+        baseUrl: entry.baseUrl,
+        apiKey: entry.apiKey,
         fetchImpl,
         timeoutMs: 1200,
       });
-      for (const id of discovered) {
-        options.push({ id: `minimax/${id}`, label: `MiniMax (${baseUrlHost}): ${id}` });
-      }
     }
   }
 
   const ollamaExplicitlyConfigured =
     Boolean(envForRun.OLLAMA_BASE_URL?.trim()) || Boolean(configForCli?.ollama?.baseUrl?.trim());
   if (ollamaExplicitlyConfigured) {
-    const baseUrl = envState.ollamaBaseUrl;
-    const baseUrlHost = describeBaseUrlHost(baseUrl);
-    if (baseUrlHost) {
-      const discovered = await discoverOpenAiCompatibleModelIds({
-        baseUrl,
-        // Bare Ollama ignores auth, but forward the OpenAI key so a proxy in front of Ollama
-        // can authenticate the /v1/models probe (the summarize calls forward it the same way).
-        apiKey: envState.apiKey,
-        fetchImpl,
-        timeoutMs: 1200,
-      });
-      if (discovered.length > 0) {
-        providers.ollama = true;
-        for (const id of discovered) {
-          options.push({ id: `ollama/${id}`, label: `Ollama (${baseUrlHost}): ${id}` });
-        }
-      }
-    }
+    const result = await appendDiscoveredOpenAiCompatibleModels({
+      options,
+      provider: "ollama",
+      label: "Ollama",
+      baseUrl: envState.ollamaBaseUrl,
+      // Bare Ollama ignores auth; proxies may use the same OpenAI key as agent calls.
+      apiKey: envState.apiKey,
+      fetchImpl,
+      timeoutMs: 1200,
+    });
+    providers.ollama = Boolean(result && result.count > 0);
   }
 
-  const openaiBaseUrl = (() => {
-    return envState.providerBaseUrls.openai;
-  })();
+  const openaiBaseUrl = envState.providerBaseUrls.openai;
 
   let localModelsSource: { kind: "openai-compatible"; baseUrlHost: string } | null = null;
 
@@ -337,20 +286,17 @@ export async function buildModelPickerOptions({
     !isProbablyOpenRouterBaseUrl(openaiBaseUrl) &&
     !isProbablyZaiBaseUrl(openaiBaseUrl)
   ) {
-    const baseUrlHost = describeBaseUrlHost(openaiBaseUrl);
-    if (baseUrlHost) {
-      const discovered = await discoverOpenAiCompatibleModelIds({
-        baseUrl: openaiBaseUrl,
-        apiKey: envState.apiKey,
-        fetchImpl,
-        timeoutMs: 900,
-      });
-      if (discovered.length > 0) {
-        localModelsSource = { kind: "openai-compatible", baseUrlHost };
-        for (const id of discovered) {
-          options.push({ id: `openai/${id}`, label: `Local (${baseUrlHost}): ${id}` });
-        }
-      }
+    const result = await appendDiscoveredOpenAiCompatibleModels({
+      options,
+      provider: "openai",
+      label: "Local",
+      baseUrl: openaiBaseUrl,
+      apiKey: envState.apiKey,
+      fetchImpl,
+      timeoutMs: 900,
+    });
+    if (result && result.count > 0) {
+      localModelsSource = { kind: "openai-compatible", baseUrlHost: result.baseUrlHost };
     }
   }
 
