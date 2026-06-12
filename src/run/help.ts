@@ -124,8 +124,8 @@ export function buildProgram() {
     )
     .option(
       "--length <length>",
-      "Summary length: short|medium|long|xl|xxl (or s/m/l) or a character limit like 20000, 20k (default: xl; configurable via ~/.summarize/config.json output.length)",
-      "xl",
+      "Summary length: short|medium|long|xl|xxl (or s/m/l) or a character limit like 20000, 20k (default: long; configurable via ~/.summarize/config.json output.length)",
+      "long",
     )
     .option(
       "--max-extract-characters <count>",

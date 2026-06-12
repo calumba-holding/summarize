@@ -110,7 +110,7 @@ If `[input]` is omitted, summarize prints concise help and exits.
 ### Summary control
 
 `--length <length>`
-: `short`, `medium`, `long`, `xl`, `xxl` (or `s`/`m`/`l`) or a character cap like `20000` or `20k`. Default `xl`. Override globally via `output.length` in [Config](../config.md).
+: `short`, `medium`, `long`, `xl`, `xxl` (or `s`/`m`/`l`) or a character cap like `20000` or `20k`. Default `long`. Override globally via `output.length` in [Config](../config.md).
 
 `--force-summary`
 : Always run the LLM, even when extracted content is shorter than the requested length.

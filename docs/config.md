@@ -51,7 +51,7 @@ For output length:
 
 1. CLI flag `--length`
 2. Config file `output.length`
-3. Built-in default (`xl`)
+3. Built-in default (`long`)
 
 See `docs/language.md` for supported values.
 

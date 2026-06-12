@@ -200,7 +200,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
   });
   const configForCliWithMagic = applyAutoCliFallbackOverrides(configForCli, resolvedOverrides);
   const allowAutoCliFallback = resolvedOverrides.autoCliFallbackEnabled === true;
-  const { lengthArg } = resolveSummaryLength(lengthRaw, config?.output?.length ?? "xl");
+  const { lengthArg } = resolveSummaryLength(lengthRaw, config?.output?.length ?? "long");
 
   const {
     requestedModel,

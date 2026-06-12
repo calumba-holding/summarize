@@ -94,7 +94,7 @@ installed, auto mode can use local CLI models via `cli.enabled` or implicit auto
 - `--length short|medium|long|xl|xxl|<chars>`
   - This is _soft guidance_ to the model (no hard truncation).
   - Minimum numeric value: 50 chars.
-  - Built-in default: `xl`.
+  - Built-in default: `long`.
   - Config default: `output.length` in `~/.summarize/config.json`.
   - Output format is Markdown; use short paragraphs and only add bullets when they improve scanability.
 - `--force-summary`

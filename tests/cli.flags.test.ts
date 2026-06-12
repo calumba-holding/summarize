@@ -19,6 +19,13 @@ import { buildProgram } from "../src/run/help.js";
 import { normalizeDiarizeArgv } from "../src/run/runner-setup.js";
 
 describe("cli flag parsing", () => {
+  it("defaults summary length to long", () => {
+    const program = buildProgram();
+    program.parse(["https://example.com"], { from: "user" });
+
+    expect(program.opts().length).toBe("long");
+  });
+
   it("parses --diarize", () => {
     expect(parseDiarizationMode("auto")).toBe("auto");
     expect(parseDiarizationMode("elevenlabs")).toBe("elevenlabs");

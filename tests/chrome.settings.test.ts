@@ -18,6 +18,7 @@ describe("chrome/settings", () => {
   it("loads defaults when storage is empty", async () => {
     const s = await loadSettings();
     expect(s).toEqual(defaultSettings);
+    expect(s.length).toBe("long");
   });
 
   it("normalizes model/length/language on save", async () => {

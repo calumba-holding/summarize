@@ -71,7 +71,7 @@ Save defaults in `~/.summarize/config.json` and override per-invocation with fla
 {
   "model": "auto",
   "output": {
-    "length": "xl",
+    "length": "long",
     "language": "auto"
   },
   "models": {

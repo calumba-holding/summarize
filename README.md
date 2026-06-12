@@ -237,6 +237,7 @@ summarize "https://example.com/master.m3u8"
 ### Output length
 
 `--length` controls how much output we ask for (guideline), not a hard cap.
+The built-in default is `long`.
 
 Set a default in `~/.summarize/config.json` with `output.length`.
 
@@ -652,7 +653,7 @@ Also supported:
 - `models` (define presets selectable via `--model <preset>`; overrides built-ins like `free`)
 - `env` (generic env var defaults; process env still wins)
 - `apiKeys` (legacy shortcut, mapped to env names; prefer `env` for new configs)
-- `output.length` (default `--length`: `short|medium|long|xl|xxl|20k`)
+- `output.length` (default: `long`; accepts `short|medium|long|xl|xxl|20k`)
 - `cache.media` (media download cache: TTL 7 days, 2048 MB cap by default; `--no-media-cache` disables)
 - `media.videoMode: "auto"|"transcript"|"understand"`
 - `media.embeddedVideo: "auto"|"off"|"prefer"|"both"` (default `auto`: combine substantial articles with primary embedded YouTube captions)

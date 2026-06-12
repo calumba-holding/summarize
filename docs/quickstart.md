@@ -34,7 +34,7 @@ summarize "https://example.com" --cli codex
 summarize "https://en.wikipedia.org/wiki/Llama"
 ```
 
-You'll see streaming Markdown in the terminal. The default length is `xl` (~10k chars); use `--length` to change it:
+You'll see streaming Markdown in the terminal. The default length is `long` (~4k chars); use `--length` to change it:
 
 ```bash
 summarize "https://example.com/long-article" --length short

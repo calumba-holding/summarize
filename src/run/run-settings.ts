@@ -106,7 +106,7 @@ export function createEmptyRunOverrides(): RunOverrides {
 
 export function resolveSummaryLength(
   raw: unknown,
-  fallback = "xl",
+  fallback = "long",
 ): {
   lengthArg: LengthArg;
   summaryLength: SummaryLengthTarget;

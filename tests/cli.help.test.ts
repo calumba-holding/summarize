@@ -29,6 +29,7 @@ describe("--help output", () => {
     expect(out).toContain("Examples");
     expect(out).toContain('summarize "https://example.com"');
     expect(out).toContain("--embedded-video <mode>");
+    expect(out).toContain("default: long");
     expect(out).not.toContain("\u001b[");
   });
 

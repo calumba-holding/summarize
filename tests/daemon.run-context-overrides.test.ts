@@ -24,7 +24,7 @@ describe("daemon/flow-context (overrides)", () => {
     path: null,
   });
 
-  it("defaults to xl + auto language when unset", () => {
+  it("defaults to long + auto language when unset", () => {
     const home = makeTempHome();
     const ctx = createDaemonUrlFlowContext({
       env: { HOME: home },
@@ -39,7 +39,7 @@ describe("daemon/flow-context (overrides)", () => {
       stdoutSink: { writeChunk: () => {} },
     });
 
-    expect(ctx.flags.lengthArg).toEqual({ kind: "preset", preset: "xl" });
+    expect(ctx.flags.lengthArg).toEqual({ kind: "preset", preset: "long" });
     expect(ctx.flags.outputLanguage).toEqual({ kind: "auto" });
   });
 

@@ -341,7 +341,7 @@ export const defaultSettings: Settings = {
     "Plain text only (no Markdown). Summarize the linked page concisely in 1-2 sentences; aim for 100-200 characters.",
   transcriber: "",
   model: "auto",
-  length: "xl",
+  length: "long",
   language: "auto",
   promptOverride: "",
   maxChars: 120_000,
