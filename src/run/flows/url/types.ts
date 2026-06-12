@@ -22,7 +22,7 @@ import type {
 } from "../../../slides/index.js";
 import type { SpeakerIdentificationSettings } from "../../../speaker-identification/index.js";
 import type { PerfTrace } from "../../perf-trace.js";
-import type { SummarizeAssetArgs } from "../asset/summary.js";
+import type { SummarizeAssetArgs } from "../asset/types.js";
 
 export type UrlFlowIo = {
   env: Record<string, string | undefined>;

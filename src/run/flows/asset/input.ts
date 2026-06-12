@@ -17,7 +17,7 @@ import {
   resolveTrueColor,
 } from "../../../tty/theme.js";
 import { assertAssetMediaTypeSupported } from "../../attachments.js";
-import type { SummarizeAssetArgs } from "./summary.js";
+import type { SummarizeAssetArgs } from "./types.js";
 
 /**
  * Check if a media type should route through transcription.

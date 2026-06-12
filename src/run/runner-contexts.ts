@@ -1,7 +1,10 @@
 import type { CacheState } from "../cache.js";
 import type { MediaCache } from "../content/index.js";
-import { createAssetSummaryContext, type SummarizeAssetArgs } from "./flows/asset/summary.js";
-import { summarizeAsset as summarizeAssetFlow } from "./flows/asset/summary.js";
+import {
+  createAssetSummaryContext,
+  summarizeAsset as summarizeAssetFlow,
+} from "./flows/asset/summary.js";
+import type { SummarizeAssetArgs } from "./flows/asset/types.js";
 import { createUrlFlowContext, type UrlFlowContext } from "./flows/url/types.js";
 import type { PerfTrace } from "./perf-trace.js";
 

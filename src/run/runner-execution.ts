@@ -15,7 +15,7 @@ import {
   withUrlAsset,
 } from "./flows/asset/input.js";
 import { outputExtractedAsset } from "./flows/asset/output.js";
-import type { SummarizeAssetArgs } from "./flows/asset/summary.js";
+import type { SummarizeAssetArgs } from "./flows/asset/types.js";
 import { runUrlFlow } from "./flows/url/flow.js";
 import type { UrlFlowContext } from "./flows/url/types.js";
 import { createTempFileFromStdin } from "./stdin-temp-file.js";

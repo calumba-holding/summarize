@@ -6,7 +6,7 @@ import { resolveGitHubModelsApiKey } from "../../../llm/github-models.js";
 import { buildAutoModelAttempts } from "../../../model-auto.js";
 import { buildPathSummaryPrompt } from "../../../prompts/index.js";
 import { ensureCliAttachmentPath } from "../../attachments.js";
-import type { AssetSummaryContext, SummarizeAssetArgs } from "./summary.js";
+import type { AssetSummaryContext, SummarizeAssetArgs } from "./types.js";
 
 export async function buildAssetModelAttempts({
   ctx,

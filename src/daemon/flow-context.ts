@@ -13,9 +13,9 @@ import type { FixedModelSpec } from "../model-spec.js";
 import { execFileTracked } from "../processes.js";
 import {
   createAssetSummaryContext,
-  type SummarizeAssetArgs,
   summarizeAsset as summarizeAssetFlow,
 } from "../run/flows/asset/summary.js";
+import type { SummarizeAssetArgs } from "../run/flows/asset/types.js";
 import { createUrlFlowContext, type UrlFlowContext } from "../run/flows/url/types.js";
 import { resolveRunContextState } from "../run/run-context.js";
 import { createRunMetrics } from "../run/run-metrics.js";

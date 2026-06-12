@@ -1,6 +1,6 @@
 import { Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
-import type { AssetSummaryContext } from "../src/run/flows/asset/summary.js";
+import type { AssetSummaryContext } from "../src/run/flows/asset/types.js";
 
 const statSync = vi.fn();
 
