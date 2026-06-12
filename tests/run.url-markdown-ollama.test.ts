@@ -75,12 +75,10 @@ describe("URL markdown Ollama routing", () => {
         openaiRequestOptionsOverride: undefined,
         llmCalls: [],
         summaryEngine: {
-          applyOpenAiGatewayOverrides: (attempt: object) => ({
-            ...attempt,
-            openaiApiKeyOverride: null,
-            openaiBaseUrlOverride: "http://ollama-box:11434/v1",
-            forceChatCompletions: true,
-          }),
+          providerRuntime: {
+            apiKeys: { ollama: null },
+            baseUrls: { ollama: "http://ollama-box:11434/v1" },
+          },
           envHasKeyFor: () => true,
         },
       },

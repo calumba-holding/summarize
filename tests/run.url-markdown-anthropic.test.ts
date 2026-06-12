@@ -78,7 +78,10 @@ function buildCtx(opts: {
       cliReasoningEffortOverride: opts.cliReasoningEffortOverride,
       llmCalls: [],
       summaryEngine: {
-        applyOpenAiGatewayOverrides: (attempt: object) => attempt,
+        providerRuntime: {
+          apiKeys: { anthropic: "sk-test" },
+          baseUrls: {},
+        },
         envHasKeyFor: () => true,
       },
     },

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveFixedModelAttempt } from "../src/application/model-attempts.js";
 import { hasEngineErrorCode } from "../src/engine/errors.js";
 import { createModelExecutor } from "../src/engine/model-executor.js";
 import type { ModelAttempt } from "../src/engine/types.js";
 import type { Prompt } from "../src/llm/prompt.js";
+import { parseRequestedModelId } from "../src/model-spec.js";
 
 const mocks = vi.hoisted(() => ({
   resolveModelIdForLlmCall: vi.fn(),
@@ -74,6 +76,20 @@ async function runAttempt(attempt: ModelAttempt, openaiUseChatCompletions: boole
   });
 }
 
+function resolveTestFixedAttempt(
+  engine: ReturnType<typeof createTestModelExecutor>,
+  modelId: string,
+): ModelAttempt {
+  const requestedModel = parseRequestedModelId(modelId);
+  if (requestedModel.kind !== "fixed") {
+    throw new Error(`expected fixed model: ${modelId}`);
+  }
+  return resolveFixedModelAttempt({
+    requestedModel,
+    providerRuntime: engine.providerRuntime,
+  });
+}
+
 beforeEach(() => {
   mocks.resolveModelIdForLlmCall.mockReset();
   mocks.summarizeWithModelId.mockReset();
@@ -139,14 +155,7 @@ describe("model executor OpenAI chat-completions routing", () => {
 
   it("applies the dedicated MiniMax key and base URL", async () => {
     const engine = createTestModelExecutor(undefined);
-    const attempt = engine.applyOpenAiGatewayOverrides({
-      transport: "native",
-      userModelId: "minimax/MiniMax-M3",
-      llmModelId: "minimax/MiniMax-M3",
-      openrouterProviders: null,
-      forceOpenRouter: false,
-      requiredEnv: "MINIMAX_API_KEY",
-    });
+    const attempt = resolveTestFixedAttempt(engine, "minimax/MiniMax-M3");
     await engine.runSummaryAttempt({
       attempt,
       prompt: { userText: "Summarize this." } as Prompt,
@@ -165,14 +174,7 @@ describe("model executor OpenAI chat-completions routing", () => {
 
   it("does not forward the OpenAI key to Ollama", async () => {
     const engine = createTestModelExecutor(undefined);
-    const attempt = engine.applyOpenAiGatewayOverrides({
-      transport: "native",
-      userModelId: "ollama/qwen3:8b",
-      llmModelId: "ollama/qwen3:8b",
-      openrouterProviders: null,
-      forceOpenRouter: false,
-      requiredEnv: "OLLAMA_BASE_URL",
-    });
+    const attempt = resolveTestFixedAttempt(engine, "ollama/qwen3:8b");
     await engine.runSummaryAttempt({
       attempt,
       prompt: { userText: "Summarize this." } as Prompt,

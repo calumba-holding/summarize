@@ -1,5 +1,6 @@
 import { isTwitterStatusUrl, isYouTubeUrl } from "@steipete/summarize-core/content/url";
 import { normalizeSummarySlideHeadings } from "@steipete/summarize-core/slides";
+import { resolveModelAttempts } from "../application/model-attempts.js";
 import {
   buildLanguageKey,
   buildLengthKey,
@@ -12,15 +13,12 @@ import type { ExtractedLinkContent } from "../content/index.js";
 import type { StreamMode } from "../flags.js";
 import type { OutputLanguage } from "../language.js";
 import type { Prompt } from "../llm/prompt.js";
-import { buildAutoModelAttempts } from "../model-auto.js";
 import type { FixedModelSpec } from "../model-spec.js";
 import { SUMMARY_SYSTEM_PROMPT } from "../prompts/index.js";
 import type { RunApiStatus } from "../shared/run-api-status.js";
 import type { SummaryLengthArg } from "../shared/summary-length.js";
 import { countTokens } from "../tokenizer.js";
-import { parseCliUserModelId } from "./cli-model-id.js";
 import type { SummaryStreamHandler } from "./events.js";
-import { createFixedModelAttempt } from "./fixed-model-attempt.js";
 import type { createModelExecutor } from "./model-executor.js";
 import { buildModelMetaFromAttempt } from "./model-meta.js";
 import { executeSummaryAttempts } from "./summary-execution.js";
@@ -146,42 +144,34 @@ export async function resolveUrlSummaryExecution({
     : null;
 
   const attempts: ModelAttempt[] = await (async () => {
-    if (model.isFallbackModel) {
-      const catalog = await model.getLiteLlmCatalog();
-      const list = buildAutoModelAttempts({
-        kind: kindForAuto,
-        promptTokens,
-        desiredOutputTokens: model.desiredOutputTokens,
-        requiresVideoUnderstanding: false,
-        env: model.envForAuto,
-        config: model.configForModelSelection,
-        catalog,
-        openrouterProvidersFromEnv: null,
-        cliAvailability: model.cliAvailability,
-        isImplicitAutoSelection: model.isImplicitAutoSelection,
-        allowAutoCliFallback: model.allowAutoCliFallback,
-        lastSuccessfulCliProvider,
-      });
-      for (const attempt of list.slice(0, 8)) {
-        runtime.log?.(`auto candidate ${attempt.debug}`);
-      }
-      return list.map((attempt) => {
-        if (attempt.transport !== "cli")
-          return model.summaryEngine.applyOpenAiGatewayOverrides(attempt as ModelAttempt);
-        const parsed = parseCliUserModelId(attempt.userModelId);
-        return { ...attempt, cliProvider: parsed.provider, cliModel: parsed.model };
-      });
-    }
     /* v8 ignore next */
-    if (!model.fixedModelSpec) {
+    if (!model.isFallbackModel && !model.fixedModelSpec) {
       throw new Error("Internal error: missing fixed model spec");
     }
-    const attempt = createFixedModelAttempt(model.fixedModelSpec);
-    return [
-      attempt.transport === "cli"
-        ? attempt
-        : model.summaryEngine.applyOpenAiGatewayOverrides(attempt),
-    ];
+    const list = resolveModelAttempts({
+      requestedModel: model.fixedModelSpec
+        ? { kind: "fixed", ...model.fixedModelSpec }
+        : { kind: "auto" },
+      kind: kindForAuto,
+      promptTokens,
+      desiredOutputTokens: model.desiredOutputTokens,
+      requiresVideoUnderstanding: false,
+      envForAuto: model.envForAuto,
+      configForModelSelection: model.configForModelSelection,
+      catalog: model.isFallbackModel ? await model.getLiteLlmCatalog() : null,
+      openrouterProvidersFromEnv: null,
+      cliAvailability: model.cliAvailability,
+      isImplicitAutoSelection: model.isImplicitAutoSelection,
+      allowAutoCliFallback: model.allowAutoCliFallback,
+      lastSuccessfulCliProvider,
+      providerRuntime: model.summaryEngine.providerRuntime,
+    });
+    if (model.isFallbackModel) {
+      for (const attempt of list.slice(0, 8)) {
+        runtime.log?.(`auto candidate ${attempt.debug ?? attempt.userModelId}`);
+      }
+    }
+    return list;
   })();
   runtime.trace?.("summary:attempts", attempts[0]?.userModelId ?? null);
 

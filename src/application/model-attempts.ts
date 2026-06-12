@@ -27,6 +27,18 @@ function bindAttempt(
   return applyProviderRuntimeToModelAttempt(attempt, providerRuntime);
 }
 
+export type ResolvedModelAttempt = ModelAttempt & { debug?: string };
+
+export function resolveFixedModelAttempt({
+  requestedModel,
+  providerRuntime,
+}: {
+  requestedModel: Extract<RequestedModel, { kind: "fixed" }>;
+  providerRuntime: ProviderRuntimeBindings;
+}): ResolvedModelAttempt {
+  return bindAttempt(createFixedModelAttempt(requestedModel), providerRuntime);
+}
+
 export function resolveModelAttempts({
   requestedModel,
   kind,
@@ -57,25 +69,24 @@ export function resolveModelAttempts({
   allowAutoCliFallback?: boolean;
   lastSuccessfulCliProvider?: CliProvider | null;
   providerRuntime: ProviderRuntimeBindings;
-}): ModelAttempt[] {
-  const attempts =
-    requestedModel.kind === "fixed"
-      ? [createFixedModelAttempt(requestedModel)]
-      : buildAutoModelAttempts({
-          kind,
-          promptTokens,
-          desiredOutputTokens,
-          requiresVideoUnderstanding,
-          env: envForAuto,
-          config: configForModelSelection,
-          catalog,
-          openrouterProvidersFromEnv,
-          cliAvailability,
-          isImplicitAutoSelection,
-          allowAutoCliFallback,
-          lastSuccessfulCliProvider,
-        });
-  return attempts.map((attempt) => bindAttempt(attempt, providerRuntime));
+}): ResolvedModelAttempt[] {
+  if (requestedModel.kind === "fixed") {
+    return [resolveFixedModelAttempt({ requestedModel, providerRuntime })];
+  }
+  return buildAutoModelAttempts({
+    kind,
+    promptTokens,
+    desiredOutputTokens,
+    requiresVideoUnderstanding,
+    env: envForAuto,
+    config: configForModelSelection,
+    catalog,
+    openrouterProvidersFromEnv,
+    cliAvailability,
+    isImplicitAutoSelection,
+    allowAutoCliFallback,
+    lastSuccessfulCliProvider,
+  }).map((attempt) => bindAttempt(attempt, providerRuntime));
 }
 
 export function selectPreferredInteractiveModelAttempt({

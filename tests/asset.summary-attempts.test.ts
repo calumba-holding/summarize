@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => ({
   buildAutoModelAttempts: vi.fn(),
   buildPathSummaryPrompt: vi.fn(() => "prompt"),
   ensureCliAttachmentPath: vi.fn(async () => "/tmp/assets/file.png"),
-  parseCliUserModelId: vi.fn((value: string) => ({ provider: "gemini", model: value })),
 }));
 
 vi.mock("../src/model-auto.js", () => ({
@@ -16,10 +15,6 @@ vi.mock("../src/prompts/index.js", () => ({
 vi.mock("../src/run/attachments.js", () => ({
   ensureCliAttachmentPath: mocks.ensureCliAttachmentPath,
 }));
-vi.mock("../src/engine/cli-model-id.js", () => ({
-  parseCliUserModelId: mocks.parseCliUserModelId,
-}));
-
 import {
   buildAssetCliContext,
   buildAssetModelAttempts,
@@ -35,11 +30,22 @@ function createContext(overrides: Record<string, unknown> = {}) {
     cliAvailability: { gemini: true },
     isImplicitAutoSelection: true,
     allowAutoCliFallback: true,
+    requestedModel: { kind: "auto" },
     summaryEngine: {
-      applyOpenAiGatewayOverrides: vi.fn((attempt) => ({
-        ...attempt,
-        gatewayWrapped: true,
-      })),
+      providerRuntime: {
+        apiKeys: {
+          openai: "x",
+          zai: "zai-key",
+          nvidia: "nv-key",
+          ollama: null,
+        },
+        baseUrls: {
+          openai: "https://openai.example/v1",
+          zai: "https://z.ai",
+          nvidia: "https://nvidia",
+          ollama: "http://ollama:11434/v1",
+        },
+      },
     },
     summaryStream: null,
     fixedModelSpec: null,
@@ -71,17 +77,13 @@ describe("asset summary attempts", () => {
       },
       {
         transport: "cli",
-        userModelId: "gemini/gemini-3-flash",
+        userModelId: "cli/gemini/gemini-3-flash",
         llmModelId: null,
         openrouterProviders: null,
         forceOpenRouter: false,
-        requiredEnv: null,
+        requiredEnv: "CLI_GEMINI",
       },
     ]);
-    mocks.parseCliUserModelId.mockReturnValueOnce({
-      provider: "gemini",
-      model: "gemini-3-flash",
-    });
 
     const ctx = createContext();
     const attempts = await buildAssetModelAttempts({
@@ -93,8 +95,10 @@ describe("asset summary attempts", () => {
     });
 
     expect(mocks.buildAutoModelAttempts).toHaveBeenCalled();
-    expect(ctx.summaryEngine.applyOpenAiGatewayOverrides).toHaveBeenCalledTimes(1);
-    expect(attempts[0]).toMatchObject({ gatewayWrapped: true, userModelId: "openai/gpt-5.4" });
+    expect(attempts[0]).toMatchObject({
+      userModelId: "openai/gpt-5.4",
+      openaiBaseUrlOverride: "https://openai.example/v1",
+    });
     expect(attempts[1]).toMatchObject({
       transport: "cli",
       cliProvider: "gemini",
@@ -167,7 +171,9 @@ describe("asset summary attempts", () => {
     });
     expect(zaiAttempts[0]).toMatchObject({
       userModelId: "zai/gpt-oss",
-      gatewayWrapped: true,
+      openaiApiKeyOverride: "zai-key",
+      openaiBaseUrlOverride: "https://z.ai",
+      forceChatCompletions: true,
     });
 
     const nvidiaAttempts = await buildAssetModelAttempts({
@@ -190,7 +196,9 @@ describe("asset summary attempts", () => {
     });
     expect(nvidiaAttempts[0]).toMatchObject({
       userModelId: "nvidia/llama",
-      gatewayWrapped: true,
+      openaiApiKeyOverride: "nv-key",
+      openaiBaseUrlOverride: "https://nvidia",
+      forceChatCompletions: true,
     });
 
     const ollamaAttempts = await buildAssetModelAttempts({
@@ -213,7 +221,9 @@ describe("asset summary attempts", () => {
     });
     expect(ollamaAttempts[0]).toMatchObject({
       userModelId: "ollama/qwen3:0.6b",
-      gatewayWrapped: true,
+      openaiApiKeyOverride: null,
+      openaiBaseUrlOverride: "http://ollama:11434/v1",
+      forceChatCompletions: true,
     });
   });
 

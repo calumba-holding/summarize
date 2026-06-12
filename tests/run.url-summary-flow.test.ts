@@ -180,7 +180,10 @@ describe("extracted URL summary timestamp guard", () => {
           openaiApiKey: null,
         },
         summaryEngine: {
-          applyOpenAiGatewayOverrides: (attempt) => attempt,
+          providerRuntime: {
+            apiKeys: { openai: "key" },
+            baseUrls: {},
+          },
           envHasKeyFor: () => true,
           formatMissingModelError: () => "missing",
           runSummaryAttempt: async ({ allowStreaming }) => {
@@ -302,11 +305,10 @@ describe("extracted URL summary timestamp guard", () => {
           ollamaBaseUrl: "http://ollama-box:11434/v1",
         },
         summaryEngine: {
-          applyOpenAiGatewayOverrides: (attempt: Record<string, unknown>) => ({
-            ...attempt,
-            openaiBaseUrlOverride: "http://ollama-box:11434/v1",
-            forceChatCompletions: true,
-          }),
+          providerRuntime: {
+            apiKeys: { ollama: null },
+            baseUrls: { ollama: "http://ollama-box:11434/v1" },
+          },
           envHasKeyFor: () => true,
           formatMissingModelError: () => "missing",
           runSummaryAttempt: async ({ attempt }: { attempt: unknown }) => {

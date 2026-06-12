@@ -75,7 +75,7 @@ const createContext = (overrides: Partial<Parameters<typeof summarizeAsset>[0]> 
     streamingEnabled: false,
     plain: true,
     summaryEngine: {
-      applyOpenAiGatewayOverrides: (attempt) => attempt,
+      providerRuntime: { apiKeys: {}, baseUrls: {} },
     } as Parameters<typeof summarizeAsset>[0]["summaryEngine"],
     trackedFetch: globalThis.fetch.bind(globalThis),
     writeViaFooter,

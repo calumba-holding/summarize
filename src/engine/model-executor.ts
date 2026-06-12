@@ -16,7 +16,6 @@ import { countTokens } from "../tokenizer.js";
 import { EngineError } from "./errors.js";
 import type { SummaryStreamHandler } from "./events.js";
 import { resolveModelIdForLlmCall, summarizeWithModelId } from "./model-call.js";
-import { applyProviderRuntimeToModelAttempt } from "./provider-attempt.js";
 import {
   canStream,
   isGoogleStreamingUnsupportedError,
@@ -86,9 +85,6 @@ export function createModelExecutor(deps: ModelExecutorDeps) {
       );
     };
   };
-
-  const applyOpenAiGatewayOverrides = (attempt: ModelAttempt): ModelAttempt =>
-    applyProviderRuntimeToModelAttempt(attempt, providerRuntime);
 
   const envHasKeyFor = (requiredEnv: ModelAttempt["requiredEnv"]) => {
     const cliProvider = cliProviderForRequiredEnv(requiredEnv);
@@ -474,9 +470,9 @@ export function createModelExecutor(deps: ModelExecutorDeps) {
   };
 
   return {
-    applyOpenAiGatewayOverrides,
     envHasKeyFor,
     formatMissingModelError,
+    providerRuntime,
     runSummaryAttempt,
   };
 }

@@ -1,4 +1,4 @@
-import { createFixedModelAttempt } from "../../../engine/fixed-model-attempt.js";
+import { resolveFixedModelAttempt } from "../../../application/model-attempts.js";
 import type { ModelAttempt } from "../../../engine/types.js";
 import { createHtmlToMarkdownConverter } from "../../../llm/html-to-markdown.js";
 import { parseGatewayStyleModelId } from "../../../llm/model-id.js";
@@ -73,9 +73,10 @@ export function createMarkdownConverters(
     if (requested.kind !== "fixed" || requested.transport === "cli") {
       throw new Error(`Internal error: unsupported markdown model ${modelId}`);
     }
-    const attempt = ctx.model.summaryEngine.applyOpenAiGatewayOverrides(
-      createFixedModelAttempt(requested),
-    );
+    const attempt = resolveFixedModelAttempt({
+      requestedModel: requested,
+      providerRuntime: ctx.model.summaryEngine.providerRuntime,
+    });
     if (attempt.transport === "cli" || !attempt.llmModelId) {
       throw new Error(`Internal error: unsupported markdown model ${modelId}`);
     }
@@ -90,9 +91,10 @@ export function createMarkdownConverters(
       ctx.model.requestedModel.kind === "fixed" &&
       ctx.model.requestedModel.transport === "native"
     ) {
-      const attempt = ctx.model.summaryEngine.applyOpenAiGatewayOverrides(
-        createFixedModelAttempt(ctx.model.requestedModel),
-      );
+      const attempt = resolveFixedModelAttempt({
+        requestedModel: ctx.model.requestedModel,
+        providerRuntime: ctx.model.summaryEngine.providerRuntime,
+      });
       if (attempt.transport === "cli" || !attempt.llmModelId) {
         throw new Error("Internal error: unsupported fixed markdown model");
       }

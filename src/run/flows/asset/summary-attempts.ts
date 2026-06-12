@@ -1,9 +1,7 @@
 import path from "node:path";
+import { resolveModelAttempts } from "../../../application/model-attempts.js";
 import type { CliProvider } from "../../../config.js";
-import { parseCliUserModelId } from "../../../engine/cli-model-id.js";
-import { createFixedModelAttempt } from "../../../engine/fixed-model-attempt.js";
 import type { ModelAttempt } from "../../../engine/types.js";
-import { buildAutoModelAttempts } from "../../../model-auto.js";
 import { buildPathSummaryPrompt } from "../../../prompts/index.js";
 import { ensureCliAttachmentPath } from "../../attachments.js";
 import type { AssetSummaryContext, SummarizeAssetArgs } from "./types.js";
@@ -23,26 +21,21 @@ export async function buildAssetModelAttempts({
 }): Promise<ModelAttempt[]> {
   if (ctx.isFallbackModel) {
     const catalog = await ctx.getLiteLlmCatalog();
-    const all = buildAutoModelAttempts({
+    return resolveModelAttempts({
+      requestedModel: ctx.requestedModel,
       kind,
       promptTokens: promptTokensForAuto,
       desiredOutputTokens: ctx.desiredOutputTokens,
       requiresVideoUnderstanding,
-      env: ctx.envForAuto,
-      config: ctx.configForModelSelection,
+      envForAuto: ctx.envForAuto,
+      configForModelSelection: ctx.configForModelSelection,
       catalog,
       openrouterProvidersFromEnv: null,
       cliAvailability: ctx.cliAvailability,
       isImplicitAutoSelection: ctx.isImplicitAutoSelection,
       allowAutoCliFallback: ctx.allowAutoCliFallback,
       lastSuccessfulCliProvider,
-    });
-    return all.map((attempt) => {
-      if (attempt.transport !== "cli") {
-        return ctx.summaryEngine.applyOpenAiGatewayOverrides(attempt as ModelAttempt);
-      }
-      const parsed = parseCliUserModelId(attempt.userModelId);
-      return { ...attempt, cliProvider: parsed.provider, cliModel: parsed.model };
+      providerRuntime: ctx.summaryEngine.providerRuntime,
     });
   }
 
@@ -50,10 +43,19 @@ export async function buildAssetModelAttempts({
   if (!ctx.fixedModelSpec) {
     throw new Error("Internal error: missing fixed model spec");
   }
-  const attempt = createFixedModelAttempt(ctx.fixedModelSpec);
-  return [
-    attempt.transport === "cli" ? attempt : ctx.summaryEngine.applyOpenAiGatewayOverrides(attempt),
-  ];
+  return resolveModelAttempts({
+    requestedModel: { kind: "fixed", ...ctx.fixedModelSpec },
+    kind,
+    promptTokens: promptTokensForAuto,
+    desiredOutputTokens: ctx.desiredOutputTokens,
+    requiresVideoUnderstanding,
+    envForAuto: ctx.envForAuto,
+    configForModelSelection: ctx.configForModelSelection,
+    catalog: null,
+    openrouterProvidersFromEnv: null,
+    cliAvailability: ctx.cliAvailability,
+    providerRuntime: ctx.summaryEngine.providerRuntime,
+  });
 }
 
 export async function buildAssetCliContext({
