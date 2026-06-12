@@ -13,6 +13,7 @@ const emptyApiKeys = {
   zaiApiKey: null,
   nvidiaApiKey: null,
   minimaxApiKey: null,
+  githubApiKey: null,
 };
 
 describe("daemon agent model resolution", () => {
@@ -27,6 +28,42 @@ describe("daemon agent model resolution", () => {
         apiKeys: { ...emptyApiKeys, openaiApiKey: "proxy-secret" },
       }),
     ).toBe("proxy-secret");
+  });
+
+  it("uses provider registry requirements in missing-key errors", () => {
+    expect(() => resolveApiKeyForModel({ provider: "minimax", apiKeys: emptyApiKeys })).toThrow(
+      "Missing MINIMAX_API_KEY for minimax model",
+    );
+    expect(() => resolveApiKeyForModel({ provider: "unknown", apiKeys: emptyApiKeys })).toThrow(
+      "Missing API key for provider: unknown",
+    );
+  });
+
+  it("resolves GitHub Models credentials and gateway settings", async () => {
+    expect(
+      resolveApiKeyForModel({
+        provider: "github-copilot",
+        apiKeys: { ...emptyApiKeys, githubApiKey: "gh-token" },
+      }),
+    ).toBe("gh-token");
+
+    const home = mkdtempSync(join(tmpdir(), "summarize-agent-github-models-"));
+    const resolved = await resolveAgentModel({
+      env: { HOME: home, GH_TOKEN: "gh-token" },
+      pageContent: "Hello",
+      modelOverride: "github-copilot/gpt-5.4",
+    });
+
+    expect(resolved.provider).toBe("github-copilot");
+    expect(resolved.model).toMatchObject({
+      id: "openai/gpt-5.4",
+      api: "openai-completions",
+      baseUrl: "https://models.github.ai/inference",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2026-03-10",
+      },
+    });
   });
 
   it("honors explicit OpenAI Responses routing for agent custom base URLs", async () => {

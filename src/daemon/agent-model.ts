@@ -1,9 +1,19 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { getModel } from "@earendil-works/pi-ai";
 import { isOpenRouterBaseUrl } from "@steipete/summarize-core";
+import type { CliProvider } from "../config.js";
+import { buildGitHubModelsHeaders, resolveGitHubModelsApiKey } from "../llm/github-models.js";
+import { parseGatewayStyleModelId } from "../llm/model-id.js";
+import {
+  cliProviderForRequiredEnv,
+  getGatewayProviderProfile,
+  isGatewayProvider,
+  requiredEnvForGatewayProvider,
+  type GatewayProvider,
+} from "../llm/provider-capabilities.js";
 import { resolveMinimaxModel } from "../llm/providers/models.js";
 import { createSyntheticModel } from "../llm/providers/shared.js";
-import { buildAutoModelAttempts, envHasKey } from "../model-auto.js";
+import { buildAutoModelAttempts, envHasKey, type AutoModelAttempt } from "../model-auto.js";
 import { parseCliUserModelId } from "../run/env.js";
 import { resolveRunContextState } from "../run/run-context.js";
 import { resolveModelSelection } from "../run/run-models.js";
@@ -18,30 +28,8 @@ type AgentApiKeys = {
   zaiApiKey: string | null;
   nvidiaApiKey: string | null;
   minimaxApiKey: string | null;
+  githubApiKey: string | null;
 };
-
-const REQUIRED_ENV_BY_PROVIDER: Record<string, string> = {
-  openrouter: "OPENROUTER_API_KEY",
-  openai: "OPENAI_API_KEY",
-  nvidia: "NVIDIA_API_KEY",
-  minimax: "MINIMAX_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  google: "GEMINI_API_KEY",
-  xai: "XAI_API_KEY",
-  zai: "Z_AI_API_KEY",
-};
-
-function parseProviderModelId(modelId: string): { provider: string; model: string } {
-  const trimmed = modelId.trim();
-  const slash = trimmed.indexOf("/");
-  if (slash === -1) {
-    return { provider: "openai", model: trimmed };
-  }
-  return {
-    provider: trimmed.slice(0, slash),
-    model: trimmed.slice(slash + 1),
-  };
-}
 
 function isCustomOpenAiBaseUrl(baseUrl: string | null): boolean {
   if (!baseUrl) return false;
@@ -145,37 +133,28 @@ export function resolveApiKeyForModel({
   provider: string;
   apiKeys: AgentApiKeys;
 }): string {
-  const resolved = (() => {
-    switch (provider) {
-      case "openrouter":
-        return apiKeys.openrouterApiKey;
-      case "openai":
-        return apiKeys.openaiApiKey;
-      case "nvidia":
-        return apiKeys.nvidiaApiKey;
-      case "minimax":
-        return apiKeys.minimaxApiKey;
-      case "anthropic":
-        return apiKeys.anthropicApiKey;
-      case "google":
-        return apiKeys.googleApiKey;
-      case "xai":
-        return apiKeys.xaiApiKey;
-      case "zai":
-        return apiKeys.zaiApiKey;
-      case "ollama":
-        return apiKeys.openaiApiKey ?? "ollama";
-      default:
-        return null;
-    }
-  })();
-
-  if (resolved) return resolved;
-  const requiredEnv = REQUIRED_ENV_BY_PROVIDER[provider];
-  if (requiredEnv) {
-    throw new Error(`Missing ${requiredEnv} for ${provider} model`);
+  if (provider === "openrouter") {
+    if (apiKeys.openrouterApiKey) return apiKeys.openrouterApiKey;
+    throw new Error("Missing OPENROUTER_API_KEY for openrouter model");
   }
-  throw new Error(`Missing API key for provider: ${provider}`);
+  if (!isGatewayProvider(provider)) {
+    throw new Error(`Missing API key for provider: ${provider}`);
+  }
+
+  const gatewayApiKeys: Partial<Record<GatewayProvider, string | null>> = {
+    openai: apiKeys.openaiApiKey,
+    anthropic: apiKeys.anthropicApiKey,
+    google: apiKeys.googleApiKey,
+    xai: apiKeys.xaiApiKey,
+    zai: apiKeys.zaiApiKey,
+    nvidia: apiKeys.nvidiaApiKey,
+    minimax: apiKeys.minimaxApiKey,
+    "github-copilot": apiKeys.githubApiKey,
+    ollama: apiKeys.openaiApiKey ?? "ollama",
+  };
+  const resolved = gatewayApiKeys[provider];
+  if (resolved) return resolved;
+  throw new Error(`Missing ${requiredEnvForGatewayProvider(provider)} for ${provider} model`);
 }
 
 function buildNoAgentModelAvailableError({
@@ -183,20 +162,9 @@ function buildNoAgentModelAvailableError({
   envForAuto,
   cliAvailability,
 }: {
-  attempts: Array<{
-    transport: "native" | "openrouter" | "cli";
-    userModelId: string;
-    requiredEnv: string;
-  }>;
+  attempts: Pick<AutoModelAttempt, "transport" | "userModelId" | "requiredEnv">[];
   envForAuto: Record<string, string | undefined>;
-  cliAvailability: {
-    claude?: boolean;
-    codex?: boolean;
-    gemini?: boolean;
-    agent?: boolean;
-    openclaw?: boolean;
-    opencode?: boolean;
-  };
+  cliAvailability: Partial<Record<CliProvider, boolean>>;
 }): Error {
   const checked = attempts.map((attempt) => attempt.userModelId);
   const missingEnv = Array.from(
@@ -204,26 +172,16 @@ function buildNoAgentModelAvailableError({
       attempts
         .filter((attempt) => attempt.transport !== "cli")
         .map((attempt) => attempt.requiredEnv)
-        .filter((requiredEnv) => !envHasKey(envForAuto, requiredEnv as never)),
+        .filter((requiredEnv) => !envHasKey(envForAuto, requiredEnv)),
     ),
   );
   const unavailableCli = Array.from(
     new Set(
       attempts
         .filter((attempt) => attempt.transport === "cli")
-        .map((attempt) => {
-          if (attempt.requiredEnv === "CLI_CLAUDE") return "claude";
-          if (attempt.requiredEnv === "CLI_CODEX") return "codex";
-          if (attempt.requiredEnv === "CLI_GEMINI") return "gemini";
-          if (attempt.requiredEnv === "CLI_AGENT") return "agent";
-          if (attempt.requiredEnv === "CLI_OPENCLAW") return "openclaw";
-          if (attempt.requiredEnv === "CLI_OPENCODE") return "opencode";
-          if (attempt.requiredEnv === "CLI_COPILOT") return "copilot";
-          if (attempt.requiredEnv === "CLI_AGY") return "agy";
-          if (attempt.requiredEnv === "CLI_PI") return "pi";
-          return "unknown";
-        })
-        .filter((provider) => !cliAvailability[provider as keyof typeof cliAvailability]),
+        .map((attempt) => cliProviderForRequiredEnv(attempt.requiredEnv))
+        .filter((provider): provider is CliProvider => provider !== null)
+        .filter((provider) => !cliAvailability[provider]),
     ),
   );
 
@@ -289,6 +247,7 @@ export async function resolveAgentModel({
     zaiApiKey,
     nvidiaApiKey,
     minimaxApiKey,
+    githubApiKey: resolveGitHubModelsApiKey(env),
   };
 
   const overrides = resolveRunOverrides({});
@@ -302,7 +261,7 @@ export async function resolveAgentModel({
     explicitModelArg: modelOverride,
   });
 
-  const providerBaseUrlMap: Record<string, string | null> = {
+  const providerBaseUrlMap: Partial<Record<GatewayProvider, string | null>> = {
     openai: providerBaseUrls.openai,
     anthropic: providerBaseUrls.anthropic,
     google: providerBaseUrls.google,
@@ -310,11 +269,16 @@ export async function resolveAgentModel({
     zai: zaiBaseUrl,
     nvidia: nvidiaBaseUrl,
     minimax: minimaxBaseUrl,
+    "github-copilot": getGatewayProviderProfile("github-copilot").defaultBaseUrl,
     ollama: ollamaBaseUrl,
   };
 
-  const applyBaseUrlOverride = (provider: string, modelId: string) => {
-    const baseUrl = providerBaseUrlMap[provider] ?? null;
+  const applyBaseUrlOverride = (provider: GatewayProvider | "openrouter", modelId: string) => {
+    const profile = provider === "openrouter" ? null : getGatewayProviderProfile(provider);
+    const baseUrl =
+      provider === "openrouter"
+        ? null
+        : (providerBaseUrlMap[provider] ?? profile?.defaultBaseUrl ?? null);
     if (provider === "minimax") {
       return {
         provider,
@@ -327,21 +291,28 @@ export async function resolveAgentModel({
         }),
       };
     }
-    const providerForPiAi = provider === "nvidia" || provider === "ollama" ? "openai" : provider;
+    const providerForPiAi =
+      provider === "nvidia" || provider === "github-copilot" || provider === "ollama"
+        ? "openai"
+        : provider;
     const forceOpenAiChatCompletions =
-      provider === "nvidia" || provider === "ollama"
-        ? true
-        : provider === "openai"
-          ? openaiUseChatCompletions
-          : undefined;
+      provider === "openai"
+        ? openaiUseChatCompletions
+        : provider === "openrouter"
+          ? undefined
+          : profile?.forceChatCompletions;
+    const model = resolveModelWithFallback({
+      provider: providerForPiAi,
+      modelId,
+      baseUrl,
+      forceOpenAiChatCompletions,
+    });
     return {
       provider,
-      model: resolveModelWithFallback({
-        provider: providerForPiAi,
-        modelId,
-        baseUrl,
-        forceOpenAiChatCompletions,
-      }),
+      model:
+        provider === "github-copilot"
+          ? { ...model, headers: buildGitHubModelsHeaders(model.headers) }
+          : model,
     };
   };
 
@@ -364,7 +335,7 @@ export async function resolveAgentModel({
       return { ...resolved, maxOutputTokens, apiKeys };
     }
 
-    const { provider, model } = parseProviderModelId(requestedModel.llmModelId);
+    const { provider, model } = parseGatewayStyleModelId(requestedModel.llmModelId);
     const resolved = applyBaseUrlOverride(provider, model);
     return { ...resolved, maxOutputTokens, apiKeys };
   }
@@ -399,7 +370,7 @@ export async function resolveAgentModel({
       return { ...resolved, maxOutputTokens, apiKeys };
     }
     if (!attempt.llmModelId) continue;
-    const { provider, model } = parseProviderModelId(attempt.llmModelId);
+    const { provider, model } = parseGatewayStyleModelId(attempt.llmModelId);
     const resolved = applyBaseUrlOverride(provider, model);
     return { ...resolved, maxOutputTokens, apiKeys };
   }

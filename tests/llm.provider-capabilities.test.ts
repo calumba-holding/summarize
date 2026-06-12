@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AUTO_CLI_ORDER,
   DEFAULT_CLI_MODELS,
+  cliProviderForRequiredEnv,
   envHasRequiredKey,
+  isGatewayProvider,
   isVideoUnderstandingCapableModelId,
   parseCliProviderName,
   requiredEnvForCliProvider,
@@ -46,6 +48,10 @@ describe("llm provider capabilities", () => {
     expect(requiredEnvForCliProvider("copilot")).toBe("CLI_COPILOT");
     expect(requiredEnvForCliProvider("agy")).toBe("CLI_AGY");
     expect(requiredEnvForCliProvider("pi")).toBe("CLI_PI");
+    expect(cliProviderForRequiredEnv("CLI_OPENCODE")).toBe("opencode");
+    expect(cliProviderForRequiredEnv("OPENAI_API_KEY")).toBeNull();
+    expect(isGatewayProvider("minimax")).toBe(true);
+    expect(isGatewayProvider("openrouter")).toBe(false);
   });
 
   it("tracks native provider capabilities centrally", () => {

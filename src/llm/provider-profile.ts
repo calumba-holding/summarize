@@ -205,6 +205,20 @@ export const DEFAULT_AUTO_CLI_ORDER: CliProvider[] = [
   // pi is also excluded; use --cli pi or --model cli/pi explicitly.
 ];
 
+type CliRequiredModelEnv = Extract<RequiredModelEnv, `CLI_${string}`>;
+
+const CLI_REQUIRED_ENV_BY_PROVIDER: Record<CliProvider, CliRequiredModelEnv> = {
+  claude: "CLI_CLAUDE",
+  codex: "CLI_CODEX",
+  gemini: "CLI_GEMINI",
+  agent: "CLI_AGENT",
+  openclaw: "CLI_OPENCLAW",
+  opencode: "CLI_OPENCODE",
+  copilot: "CLI_COPILOT",
+  agy: "CLI_AGY",
+  pi: "CLI_PI",
+};
+
 export function parseCliProviderName(raw: string): CliProvider | null {
   const normalized = raw.trim().toLowerCase();
   if (normalized === "claude") return "claude";
@@ -220,23 +234,18 @@ export function parseCliProviderName(raw: string): CliProvider | null {
 }
 
 export function requiredEnvForCliProvider(provider: CliProvider): RequiredModelEnv {
-  return provider === "codex"
-    ? "CLI_CODEX"
-    : provider === "gemini"
-      ? "CLI_GEMINI"
-      : provider === "agent"
-        ? "CLI_AGENT"
-        : provider === "openclaw"
-          ? "CLI_OPENCLAW"
-          : provider === "opencode"
-            ? "CLI_OPENCODE"
-            : provider === "copilot"
-              ? "CLI_COPILOT"
-              : provider === "agy"
-                ? "CLI_AGY"
-                : provider === "pi"
-                  ? "CLI_PI"
-                  : "CLI_CLAUDE";
+  return CLI_REQUIRED_ENV_BY_PROVIDER[provider];
+}
+
+export function cliProviderForRequiredEnv(requiredEnv: RequiredModelEnv): CliProvider | null {
+  for (const [provider, candidate] of Object.entries(CLI_REQUIRED_ENV_BY_PROVIDER)) {
+    if (candidate === requiredEnv) return provider as CliProvider;
+  }
+  return null;
+}
+
+export function isGatewayProvider(provider: string): provider is GatewayProvider {
+  return Object.hasOwn(GATEWAY_PROVIDER_PROFILES, provider);
 }
 
 export function getGatewayProviderProfile(provider: GatewayProvider): GatewayProviderProfile {

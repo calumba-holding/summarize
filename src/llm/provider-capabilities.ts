@@ -1,8 +1,10 @@
 export {
   DEFAULT_AUTO_CLI_ORDER,
   DEFAULT_CLI_MODELS,
+  cliProviderForRequiredEnv,
   envHasRequiredKey,
   getGatewayProviderProfile,
+  isGatewayProvider,
   isVideoUnderstandingCapableModelId,
   isVideoUnderstandingCapableProvider,
   isOpenAiCompatibleProvider,
