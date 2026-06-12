@@ -135,3 +135,5 @@ export function createSidepanelDom() {
     titleEl,
   };
 }
+
+export type SidepanelDom = ReturnType<typeof createSidepanelDom>;

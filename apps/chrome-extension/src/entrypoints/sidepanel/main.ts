@@ -1,13 +1,10 @@
-import MarkdownIt from "markdown-it";
 import type { BgToPanel } from "../../lib/panel-contracts";
-import type { SseSlidesData } from "../../lib/runtime-contracts";
 import {
   defaultSettings,
   loadSettings,
   patchSettings,
   type SlidesLayout,
 } from "../../lib/settings";
-import { splitSummaryFromSlides } from "../../lib/slides-text";
 import { generateToken } from "../../lib/token";
 import { syncNavigationWithActiveTab } from "./active-tab-sync";
 import { createAppearanceControls } from "./appearance-controls";
@@ -17,44 +14,27 @@ import { bindSidepanelUiEvents } from "./bindings";
 import { bootstrapSidepanel } from "./bootstrap-runtime";
 import { createSidepanelChatRuntime } from "./chat-runtime";
 import { createSidepanelDom } from "./dom";
-import { createSidepanelFeedbackRuntime } from "./feedback-runtime";
 import { createSidepanelInteractionRuntime } from "./interaction-runtime";
 import { createMetricsController } from "./metrics-controller";
 import { createNavigationRuntime } from "./navigation-runtime";
-import {
-  buildPanelCachePayload,
-  createPanelCacheController,
-  type PanelCachePayload,
-} from "./panel-cache";
+import type { PanelCachePayload } from "./panel-cache";
 import { createPanelMessagingRuntime } from "./panel-messaging";
 import { createPanelStateStore } from "./panel-state-store";
 import { createPanelViewRuntime } from "./panel-view-runtime";
-import { createPanelPhaseRuntime } from "./phase-runtime";
 import { createPlannedSlidesRuntime } from "./planned-slides-runtime";
-import {
-  retainRenderedSlideSummary,
-  selectRetainedSlideSummaryMarkdown,
-} from "./retained-slide-summary";
-import { panelUrlsMatch } from "./session-policy";
+import { createSidepanelPresentationRuntime } from "./presentation-runtime";
+import { selectRetainedSlideSummaryMarkdown } from "./retained-slide-summary";
 import { createSetupControlsRuntime } from "./setup-controls-runtime";
 import { friendlyFetchError } from "./setup-runtime";
-import { createSidepanelSlidesRuntime } from "./slides-runtime";
 import { resolveSlidesInputMode } from "./slides-session-state";
-import { selectMarkdownForLayout } from "./slides-state";
-import { createSlidesTextController, type SlideSummarySource } from "./slides-text-controller";
-import { createSlidesViewRuntime } from "./slides-view-runtime";
-import { createSummarizeCommand } from "./summarize-command";
-import { createSummarizeControlRuntime } from "./summarize-control-runtime";
-import { createSummarizeControlView } from "./summarize-control-view";
 import { createSummaryRunRuntime } from "./summary-run-runtime";
 import { createSummaryStreamRuntime } from "./summary-stream-runtime";
-import { createSummaryViewRuntime } from "./summary-view-runtime";
 import { registerSidepanelTestHooks } from "./test-hooks";
-import { parseTimestampHref } from "./timestamp-links";
 import type { UiState } from "./types";
 import { createTypographyController } from "./typography-controller";
 import { createUiStateRuntime } from "./ui-state-runtime";
 
+const dom = createSidepanelDom();
 const {
   advancedBtn,
   advancedSettingsBodyEl,
@@ -77,16 +57,8 @@ const {
   clearBtn,
   drawerEl,
   drawerToggleBtn,
-  errorEl,
-  errorLogsBtn,
-  errorMessageEl,
-  errorRetryBtn,
-  headerEl,
-  inlineErrorCloseBtn,
   inlineErrorEl,
-  inlineErrorLogsBtn,
   inlineErrorMessageEl,
-  inlineErrorRetryBtn,
   lengthRoot,
   lineLooseBtn,
   lineTightBtn,
@@ -99,23 +71,14 @@ const {
   modelRowEl,
   modelStatusEl,
   pickersRoot,
-  progressFillEl,
   refreshBtn,
   renderEl,
   renderMarkdownHostEl,
-  renderSlidesHostEl,
   setupEl,
   sizeLgBtn,
   sizeSmBtn,
-  slideNoticeEl,
-  slideNoticeMessageEl,
-  slideNoticeRetryBtn,
   slidesLayoutEl,
-  subtitleEl,
-  summarizeControlRoot,
-  summaryCopyBtn,
-  titleEl,
-} = createSidepanelDom();
+} = dom;
 
 const metricsController = createMetricsController({
   metricsEl,
@@ -131,33 +94,6 @@ const typographyController = createTypographyController({
   defaultFontSize: defaultSettings.fontSize,
   defaultLineHeight: defaultSettings.lineHeight,
 });
-
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: false,
-});
-
-const slideTagPattern = /^\[slide:(\d+)\]/i;
-const slideTagPlugin = (markdown: MarkdownIt) => {
-  markdown.inline.ruler.before("emphasis", "slide_tag", (state, silent) => {
-    const match = state.src.slice(state.pos).match(slideTagPattern);
-    if (!match) return false;
-    if (!silent) {
-      const token = state.push("slide_tag", "span", 0);
-      token.meta = { index: Number(match[1]) };
-    }
-    state.pos += match[0].length;
-    return true;
-  });
-  markdown.renderer.rules.slide_tag = (tokens, idx) => {
-    const index = tokens[idx]?.meta?.index;
-    if (!Number.isFinite(index)) return "";
-    return `<span class="slideInline" data-slide-index="${index}"></span>`;
-  };
-};
-
-md.use(slideTagPlugin);
 
 const panelStateStore = createPanelStateStore();
 const panelState = panelStateStore.state;
@@ -202,137 +138,41 @@ const appearanceControls = createAppearanceControls({
   },
 });
 
-const slidesTextController = createSlidesTextController({
-  getSlides: () => panelState.slides?.slides ?? null,
-  getLengthValue: () => appearanceControls.getLengthValue(),
-  getSlidesOcrEnabled: () => getSlidesState().slidesOcrEnabled,
-});
-
-function setSlidesTranscriptTimedText(value: string | null) {
-  slidesTextController.setTranscriptTimedText(value);
-}
-
-renderEl.addEventListener("click", (event) => {
-  const target = event.target as HTMLElement | null;
-  if (!target) return;
-  const link = target.closest("a.chatTimestamp") as HTMLAnchorElement | null;
-  if (!link) return;
-  const href = link.getAttribute("href") ?? "";
-  if (!href.startsWith("timestamp:")) return;
-  event.preventDefault();
-  event.stopPropagation();
-  const seconds = parseTimestampHref(href);
-  if (seconds == null) return;
-  void send({ type: "panel:seek", seconds });
-});
-
-const isStreaming = () => panelState.phase === "connecting" || panelState.phase === "streaming";
-
-const feedbackRuntime = createSidepanelFeedbackRuntime({
-  panelState,
-  headerEl,
-  titleEl,
-  subtitleEl,
-  progressFillEl,
-  panelErrorEl: errorEl,
-  panelErrorMessageEl: errorMessageEl,
-  panelErrorRetryBtn: errorRetryBtn,
-  panelErrorLogsBtn: errorLogsBtn,
-  inlineErrorEl,
-  inlineErrorMessageEl,
-  inlineErrorRetryBtn,
-  inlineErrorLogsBtn,
-  inlineErrorCloseBtn,
-  slideNoticeEl,
-  slideNoticeMessageEl,
-  slideNoticeRetryBtn,
-  sendOpenOptions: () => {
-    void send({ type: "panel:openOptions" });
-  },
-});
-const { errorController, headerController, hideSlideNotice, showSlideNotice } = feedbackRuntime;
-
-const sendSummarize = createSummarizeCommand({
-  send,
-  setLastAction: (value) => {
-    updatePanelSession({ lastAction: value });
-  },
-  clearInlineError: () => {
-    errorController.clearInlineError();
-  },
-  getInputModeOverride: () => getSlidesState().inputModeOverride,
-});
-
-const summarizeControlView = createSummarizeControlView({
-  root: summarizeControlRoot,
-  panelState,
-  slidesTextController,
-});
-const refreshSummarizeControl = summarizeControlView.refresh;
-
-const panelCacheController = createPanelCacheController({
-  getSnapshot: () =>
-    buildPanelCachePayload(panelState, slidesTextController.getTranscriptTimedText()),
-  sendCache: (payload) => {
-    void send({ type: "panel:cache", cache: payload });
-  },
-  sendRequest: (request) => {
-    void send({ type: "panel:get-cache", ...request });
-  },
-});
-
-const slidesViewRuntime = createSlidesViewRuntime({
-  renderMarkdownHostEl,
-  renderSlidesHostEl,
-  summaryCopyBtn,
-  chatMessagesEl,
-  md,
-  headerSetStatus: (text) => headerController.setStatus(text),
-  headerSetProgressOverride: (busy) => headerController.setProgressOverride(busy),
-  slidesTextController,
-  panelCacheController,
-  send,
-  refreshSummarizeControl,
-  hideSlideNotice,
+const presentationRuntime = createSidepanelPresentationRuntime({
+  dom,
   panelState,
   dispatchPanelState: panelStateStore.dispatch,
-  getFallbackSummaryMarkdown: () => selectRetainedSlideSummaryMarkdown(panelState),
-});
-
-const slidesRuntime = createSidepanelSlidesRuntime({
-  applySlidesPayload,
-  clearSummarySource: () => {
-    slidesTextController.clearSummarySource();
-  },
-  panelState,
-  dispatchPanelState: panelStateStore.dispatch,
-  friendlyFetchError,
-  getLengthValue: () => appearanceControls.getLengthValue(),
-  getToken: async () => (await loadSettings()).token,
+  appearanceControls,
+  metricsController,
   resolveLocalSlides,
-  getTranscriptTimedText: () => slidesTextController.getTranscriptTimedText(),
-  headerSetStatus: (text) => {
-    headerController.setStatus(text);
-  },
-  hideSlideNotice,
-  isStreaming,
-  panelUrlsMatch,
-  refreshSummarizeControl,
-  renderInlineSlidesFallback: () => {
-    renderInlineSlides(renderMarkdownHostEl, { fallback: true });
-  },
-  renderMarkdown,
-  schedulePanelCacheSync: () => {
-    panelCacheController.scheduleSync();
-  },
-  setSlidesBusy,
-  showSlideNotice,
-  updateSlideSummaryFromMarkdown,
+  send,
 });
 const {
-  applySlidesSummaryMarkdown,
-  handleSlidesStatus,
-  isActiveSlidesRunLocal,
+  markdown: md,
+  isStreaming,
+  panelCacheController,
+  feedback: {
+    bindActions: bindFeedbackActions,
+    errorController,
+    headerController,
+    hideSlideNotice,
+    showSlideNotice,
+  },
+  phase: { setPhase },
+  summary: { renderMarkdown, sendSummarize, viewRuntime: summaryViewRuntime },
+  slides: {
+    applySlidesPayload,
+    controlRuntime: summarizeControlRuntime,
+    refreshSummarizeControl,
+    renderInlineSlides,
+    runtime: slidesRuntime,
+    setSlidesTranscriptTimedText,
+    textController: slidesTextController,
+    updateSlideSummaryFromMarkdown,
+    viewRuntime: slidesViewRuntime,
+  },
+} = presentationRuntime;
+const {
   maybeApplyPendingSlidesSummary,
   maybeStartPendingSlidesForUrl,
   rememberPendingSlidesRun,
@@ -343,63 +183,15 @@ const {
   startSlidesSummaryStreamForRunId,
   stopSlidesStream,
 } = slidesRuntime;
-
-const summarizeControlRuntime = createSummarizeControlRuntime({
-  renderMarkdownHostEl,
-  renderSlidesHostEl,
-  slidesLayoutEl,
-  slidesTextController,
-  panelState,
-  dispatchPanelState: panelStateStore.dispatch,
-  patchSettings,
-  loadSettings,
-  showSlideNotice: (message) => {
-    showSlideNotice(message);
-  },
-  hideSlideNotice,
-  setSlidesBusy,
-  stopSlidesStream,
-  maybeApplyPendingSlidesSummary,
-  maybeStartPendingSlidesForUrl,
-  sendSummarize,
-  resolveActiveSlidesRunId,
-  isActiveSlidesRunLocal,
-  startSlidesStreamForRunId,
-  startSlidesSummaryStreamForRunId: (runId, url) => {
-    startSlidesSummaryStreamForRunId(runId, url ?? null);
-  },
-  renderMarkdownDisplay,
-  renderInlineSlidesFallback: () => {
-    renderInlineSlides(renderMarkdownHostEl, { fallback: true });
-  },
+const {
   queueSlidesRender,
-  applySlidesRendererLayout: () => {
-    slidesViewRuntime.slidesRenderer.applyLayout();
-  },
-});
-const { applySlidesLayout, setSlidesLayout } = summarizeControlRuntime;
-summarizeControlView.bindActions({
-  onSlidesTextModeChange: (value) => {
-    summarizeControlRuntime.handleSlidesTextModeChange(value);
-    refreshSummarizeControl();
-  },
-  onChange: async (value) => {
-    await summarizeControlRuntime.handleSummarizeControlChange(value);
-    refreshSummarizeControl();
-  },
-  onSummarize: sendSummarize,
-});
-
-const phaseRuntime = createPanelPhaseRuntime({
-  panelState,
-  dispatchPanelState: panelStateStore.dispatch,
-  errorController,
-  headerController,
-  setSlidesBusy,
   rebuildSlideDescriptions,
-  queueSlidesRender,
-});
-const { setPhase } = phaseRuntime;
+  renderMarkdownDisplay,
+  setSlidesBusy,
+  updateSlidesTextState,
+} = slidesViewRuntime;
+const { applySlidesLayout, setSlidesLayout } = summarizeControlRuntime;
+const { resetSummaryView } = summaryViewRuntime;
 
 const navigationRuntime = createNavigationRuntime();
 
@@ -451,33 +243,6 @@ const chatRuntime = createSidepanelChatRuntime({
   },
 });
 
-const summaryViewRuntime = createSummaryViewRuntime({
-  panelState,
-  dispatchPanelState: panelStateStore.dispatch,
-  renderEl,
-  renderSlidesHostEl,
-  renderMarkdownHostEl,
-  summaryCopyBtn,
-  slidesRenderer: slidesViewRuntime.slidesRenderer,
-  metricsController,
-  headerController,
-  slidesTextController,
-  slidesHydrator: activeSlidesHydrator,
-  stopSlidesStream,
-  refreshSummarizeControl,
-  setSlidesTranscriptTimedText,
-  updateSlidesTextState,
-  requestSlidesContext,
-  requestSlidesCapture: () => {
-    void send({ type: "panel:slides-capture" });
-  },
-  updateSlideSummaryFromMarkdown,
-  renderMarkdown,
-  renderMarkdownDisplay,
-  queueSlidesRender,
-  setPhase,
-});
-const { resetSummaryView } = summaryViewRuntime;
 const panelViewRuntime = createPanelViewRuntime({
   summaryView: summaryViewRuntime,
   resetChatState: chatRuntime.reset,
@@ -513,49 +278,6 @@ async function clearCurrentView() {
   panelCacheController.scheduleSync();
   headerController.setStatus("");
   setPhase("idle");
-}
-
-function renderEmptySummaryState() {
-  slidesViewRuntime.renderEmptySummaryState();
-}
-
-function renderMarkdownDisplay() {
-  slidesViewRuntime.renderMarkdownDisplay();
-}
-
-function renderMarkdown(markdown: string) {
-  retainRenderedSlideSummary(panelState, panelStateStore.dispatch, markdown);
-  slidesViewRuntime.renderMarkdown(markdown);
-}
-
-function setSlidesBusy(next: boolean) {
-  slidesViewRuntime.setSlidesBusy(next);
-}
-
-function updateSlideSummaryFromMarkdown(
-  markdown: string,
-  opts?: {
-    preserveIfEmpty?: boolean;
-    source?: Exclude<SlideSummarySource, null>;
-  },
-) {
-  slidesViewRuntime.updateSlideSummaryFromMarkdown(markdown, opts);
-}
-
-function seekToSlideTimestamp(seconds: number | null | undefined) {
-  if (seconds == null || !Number.isFinite(seconds)) return;
-  void send({ type: "panel:seek", seconds: Math.floor(seconds) });
-}
-function updateSlidesTextState() {
-  slidesViewRuntime.updateSlidesTextState();
-}
-
-function rebuildSlideDescriptions() {
-  slidesViewRuntime.rebuildSlideDescriptions();
-}
-
-function applySlidesPayload(data: SseSlidesData) {
-  slidesViewRuntime.applySlidesPayload(data, setSlidesTranscriptTimedText);
 }
 
 registerSidepanelTestHooks({
@@ -635,18 +357,6 @@ registerSidepanelTestHooks({
   isInlineErrorVisible: () => !inlineErrorEl.classList.contains("hidden"),
   getInlineErrorMessage: () => inlineErrorMessageEl.textContent ?? "",
 });
-
-async function requestSlidesContext() {
-  await slidesViewRuntime.requestSlidesContext();
-}
-
-function queueSlidesRender() {
-  slidesViewRuntime.queueSlidesRender();
-}
-
-function renderInlineSlides(container: HTMLElement, opts?: { fallback?: boolean }) {
-  slidesViewRuntime.renderInlineSlides(container, opts);
-}
 
 const plannedSlidesRuntime = createPlannedSlidesRuntime({
   panelState,
@@ -948,10 +658,7 @@ function retryLastAction() {
   sendSummarize({ refresh: true });
 }
 
-feedbackRuntime.bindActions({
-  retryLastAction,
-  retrySlidesStream: summarizeControlRuntime.retrySlidesStream,
-});
+bindFeedbackActions(retryLastAction);
 
 bindSidepanelUiEvents({
   refreshBtn,
