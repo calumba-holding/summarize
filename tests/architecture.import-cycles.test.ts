@@ -1,0 +1,188 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import ts from "typescript";
+import { describe, expect, it } from "vitest";
+
+const sourceRoots = [
+  resolve("src"),
+  resolve("packages/core/src"),
+  resolve("apps/chrome-extension/src"),
+];
+
+type PackageExport = string | { import?: string };
+
+type WorkspacePackage = {
+  name: string;
+  sourceRoot: string;
+  exports: Record<string, PackageExport>;
+};
+
+function loadWorkspacePackage(packageDirectory: string, sourceRoot: string): WorkspacePackage {
+  const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8")) as {
+    name: string;
+    exports: Record<string, PackageExport>;
+  };
+  return {
+    name: manifest.name,
+    sourceRoot: resolve(sourceRoot),
+    exports: manifest.exports,
+  };
+}
+
+const workspacePackages = [
+  loadWorkspacePackage(".", "src"),
+  loadWorkspacePackage("packages/core", "packages/core/src"),
+];
+
+function collectSourceFiles(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectSourceFiles(path));
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+      !entry.name.endsWith(".d.ts")
+    ) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function moduleSpecifiers(file: string): string[] {
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const specifiers: string[] = [];
+
+  function visit(node: ts.Node): void {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      specifiers.push(node.argument.literal.text);
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(source);
+  return specifiers;
+}
+
+function resolveCandidate(unresolved: string, sourceFiles: ReadonlySet<string>): string | null {
+  const withoutJsExtension = unresolved.replace(/\.(?:m|c)?js$/, "");
+  const candidates = [
+    unresolved,
+    `${withoutJsExtension}.ts`,
+    `${withoutJsExtension}.tsx`,
+    join(withoutJsExtension, "index.ts"),
+    join(withoutJsExtension, "index.tsx"),
+  ];
+  return candidates.find((candidate) => sourceFiles.has(candidate)) ?? null;
+}
+
+function resolveWorkspaceImport(
+  specifier: string,
+  sourceFiles: ReadonlySet<string>,
+): string | null {
+  for (const workspacePackage of workspacePackages) {
+    if (specifier !== workspacePackage.name && !specifier.startsWith(`${workspacePackage.name}/`)) {
+      continue;
+    }
+    const subpath =
+      specifier === workspacePackage.name
+        ? "."
+        : `.${specifier.slice(workspacePackage.name.length)}`;
+    const packageExport = workspacePackage.exports[subpath];
+    const importTarget = typeof packageExport === "string" ? packageExport : packageExport?.import;
+    if (!importTarget?.startsWith("./dist/esm/")) return null;
+    const sourcePath = importTarget.slice("./dist/esm/".length);
+    return resolveCandidate(resolve(workspacePackage.sourceRoot, sourcePath), sourceFiles);
+  }
+  return null;
+}
+
+function resolveSourceImport(
+  importer: string,
+  specifier: string,
+  sourceFiles: ReadonlySet<string>,
+): string | null {
+  if (specifier.startsWith(".")) {
+    return resolveCandidate(resolve(dirname(importer), specifier), sourceFiles);
+  }
+  return resolveWorkspaceImport(specifier, sourceFiles);
+}
+
+function buildImportGraph(files: readonly string[]): Map<string, string[]> {
+  const sourceFiles = new Set(files);
+  return new Map(
+    files.map((file) => [
+      file,
+      moduleSpecifiers(file)
+        .map((specifier) => resolveSourceImport(file, specifier, sourceFiles))
+        .filter((dependency): dependency is string => dependency !== null),
+    ]),
+  );
+}
+
+function findImportCycles(graph: ReadonlyMap<string, readonly string[]>): string[][] {
+  const state = new Map<string, "visiting" | "visited">();
+  const stack: string[] = [];
+  const cycles: string[][] = [];
+
+  function visit(file: string): void {
+    state.set(file, "visiting");
+    stack.push(file);
+    for (const dependency of graph.get(file) ?? []) {
+      const dependencyState = state.get(dependency);
+      if (dependencyState === "visiting") {
+        const cycleStart = stack.lastIndexOf(dependency);
+        cycles.push([...stack.slice(cycleStart), dependency]);
+      } else if (!dependencyState) {
+        visit(dependency);
+      }
+    }
+    stack.pop();
+    state.set(file, "visited");
+  }
+
+  for (const file of graph.keys()) {
+    if (!state.has(file)) visit(file);
+  }
+  return cycles;
+}
+
+function displayPath(file: string): string {
+  return relative(process.cwd(), file).split(sep).join("/");
+}
+
+describe("production import graph", () => {
+  it("has no import cycles", () => {
+    const files = sourceRoots.flatMap(collectSourceFiles);
+    const cycles = findImportCycles(buildImportGraph(files)).map((cycle) =>
+      cycle.map(displayPath).join(" -> "),
+    );
+
+    expect(cycles).toEqual([]);
+  });
+});
