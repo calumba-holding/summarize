@@ -1,69 +1,24 @@
 import { logExtensionEvent } from "../../lib/extension-logs";
 import type { BrowserAiSummaryInput } from "../../lib/panel-contracts";
+import {
+  browserAiErrorDetail,
+  buildLanguageModelOptions,
+  defaultGetLanguageModelApi,
+  defaultGetSummarizerApi,
+  defaultIsUserActive,
+  isBrowserAiQuotaError,
+  promptTextLength,
+  promptUsesImages,
+  type BrowserAiPromptInput,
+  type BrowserLanguageModelApi,
+  type BrowserLanguageModelPromptOptions,
+  type BrowserLanguageModelSession,
+  type BrowserSummarizerApi,
+  type BrowserSummarizerSession,
+} from "./browser-ai-contracts";
+import { summarizeRecursively } from "./browser-ai-recursive-summary";
 
-type BrowserAiAvailability = "available" | "downloadable" | "downloading" | "unavailable";
-
-type BrowserSummarizerSession = {
-  inputQuota?: number;
-  measureInputUsage?: (input: string, options?: { context?: string }) => Promise<number>;
-  summarize: (
-    input: string,
-    options?: { context?: string; signal?: AbortSignal },
-  ) => Promise<string>;
-  destroy?: () => void;
-};
-
-type BrowserSummarizerApi = {
-  availability: () => Promise<BrowserAiAvailability>;
-  create: (options: {
-    type: "key-points";
-    format: "plain-text";
-    length: BrowserAiSummaryInput["length"];
-    monitor: (monitor: EventTarget) => void;
-  }) => Promise<BrowserSummarizerSession>;
-};
-
-type BrowserLanguageModelPromptOptions = {
-  responseConstraint: RegExp;
-  omitResponseConstraintInput: true;
-  signal?: AbortSignal;
-};
-
-type BrowserLanguageModelContent = { type: "text"; value: string } | { type: "image"; value: Blob };
-
-type BrowserLanguageModelMessage = {
-  role: "user";
-  content: BrowserLanguageModelContent[];
-};
-
-export type BrowserAiPromptInput = string | BrowserLanguageModelMessage[];
-
-type BrowserLanguageModelSession = {
-  contextWindow?: number;
-  measureContextUsage?: (
-    input: BrowserAiPromptInput,
-    options: Omit<BrowserLanguageModelPromptOptions, "signal">,
-  ) => Promise<number>;
-  prompt: (
-    input: BrowserAiPromptInput,
-    options: BrowserLanguageModelPromptOptions,
-  ) => Promise<string>;
-  destroy?: () => void;
-};
-
-type BrowserLanguageModelApi = {
-  availability: (options: BrowserLanguageModelCreateOptions) => Promise<BrowserAiAvailability>;
-  create: (
-    options: BrowserLanguageModelCreateOptions & {
-      monitor: (monitor: EventTarget) => void;
-    },
-  ) => Promise<BrowserLanguageModelSession>;
-};
-
-type BrowserLanguageModelCreateOptions = {
-  expectedInputs: Array<{ type: "text"; languages: ["en"] } | { type: "image" }>;
-  expectedOutputs: Array<{ type: "text"; languages: ["en"] }>;
-};
+export type { BrowserAiPromptInput } from "./browser-ai-contracts";
 
 type RuntimeOptions = {
   getApi?: () => BrowserSummarizerApi | null;
@@ -86,215 +41,8 @@ export type BrowserAiPromptResult =
       contextWindow: number | null;
     };
 
-function buildLanguageModelOptions(imageInput: boolean): BrowserLanguageModelCreateOptions {
-  return {
-    expectedInputs: [
-      { type: "text", languages: ["en"] },
-      ...(imageInput ? ([{ type: "image" }] as const) : []),
-    ],
-    expectedOutputs: [{ type: "text", languages: ["en"] }],
-  };
-}
-
-function promptUsesImages(input: BrowserAiPromptInput): boolean {
-  return (
-    typeof input !== "string" &&
-    input.some((message) => message.content.some((content) => content.type === "image"))
-  );
-}
-
-function promptTextLength(input: BrowserAiPromptInput): number {
-  if (typeof input === "string") return input.length;
-  return input.reduce(
-    (total, message) =>
-      total +
-      message.content.reduce(
-        (contentTotal, content) =>
-          contentTotal + (content.type === "text" ? content.value.length : 0),
-        0,
-      ),
-    0,
-  );
-}
-
-function defaultGetApi(): BrowserSummarizerApi | null {
-  const api = (globalThis as typeof globalThis & { Summarizer?: BrowserSummarizerApi }).Summarizer;
-  return api && typeof api.availability === "function" && typeof api.create === "function"
-    ? api
-    : null;
-}
-
-function defaultGetLanguageModelApi(): BrowserLanguageModelApi | null {
-  const api = (
-    globalThis as typeof globalThis & {
-      LanguageModel?: BrowserLanguageModelApi;
-    }
-  ).LanguageModel;
-  return api && typeof api.availability === "function" && typeof api.create === "function"
-    ? api
-    : null;
-}
-
-function defaultIsUserActive(): boolean {
-  return Boolean(
-    (
-      navigator as Navigator & {
-        userActivation?: { isActive?: boolean };
-      }
-    ).userActivation?.isActive,
-  );
-}
-
-function isQuotaError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === "QuotaExceededError") return true;
-  if ((error as { name?: unknown } | null)?.name === "QuotaExceededError") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /context window|input quota|quota exceeded/i.test(message);
-}
-
-function errorDetail(error: unknown) {
-  return {
-    error: error instanceof Error ? error.message : String(error),
-    errorName: (error as { name?: unknown } | null)?.name,
-  };
-}
-
-function splitLongUnit(value: string, target: number): string[] {
-  const words = value.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) {
-    return Array.from({ length: Math.ceil(value.length / target) }, (_unused, index) =>
-      value.slice(index * target, (index + 1) * target),
-    );
-  }
-  const chunks: string[] = [];
-  let current = "";
-  for (const word of words) {
-    if (word.length > target) {
-      if (current) chunks.push(current);
-      current = "";
-      chunks.push(...splitLongUnit(word, target));
-      continue;
-    }
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > target && current) {
-      chunks.push(current);
-      current = word;
-    } else {
-      current = next;
-    }
-  }
-  if (current) chunks.push(current);
-  return chunks;
-}
-
-function splitNear(value: string, maxChars: number): string[] {
-  const target = Math.max(1, Math.floor(maxChars));
-  if (value.length <= target) return [value];
-  const units = value
-    .split(/\n{2,}|(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const chunks: string[] = [];
-  let current = "";
-  const flush = () => {
-    if (!current) return;
-    chunks.push(current);
-    current = "";
-  };
-
-  for (const unit of units) {
-    if (unit.length > target) {
-      flush();
-      chunks.push(...splitLongUnit(unit, target));
-      continue;
-    }
-    const next = current ? `${current} ${unit}` : unit;
-    if (next.length > target) flush();
-    current = current ? `${current} ${unit}` : unit;
-  }
-  flush();
-  return chunks.length > 1 ? chunks : [value.slice(0, target), value.slice(target)];
-}
-
-async function summarizeRecursively({
-  session,
-  text,
-  context,
-  signal,
-  depth,
-}: {
-  session: BrowserSummarizerSession;
-  text: string;
-  context?: string;
-  signal?: AbortSignal;
-  depth: number;
-}): Promise<string> {
-  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-  if (depth > 8)
-    throw new DOMException("Input exceeds the on-device context window", "QuotaExceededError");
-
-  const inputQuota = session.inputQuota;
-  if (
-    typeof inputQuota === "number" &&
-    Number.isFinite(inputQuota) &&
-    inputQuota > 0 &&
-    session.measureInputUsage
-  ) {
-    const usage = await session.measureInputUsage(text, context ? { context } : undefined);
-    if (usage <= inputQuota) {
-      return await session.summarize(text, { context, signal });
-    }
-    const targetChars = Math.max(1_000, Math.floor((text.length * inputQuota * 0.8) / usage));
-    const chunks = splitNear(text, Math.min(targetChars, Math.ceil(text.length / 2)));
-    const partials: string[] = [];
-    for (const chunk of chunks) {
-      partials.push(
-        await summarizeRecursively({
-          session,
-          text: chunk,
-          context,
-          signal,
-          depth: depth + 1,
-        }),
-      );
-    }
-    return await summarizeRecursively({
-      session,
-      text: partials.join("\n"),
-      context,
-      signal,
-      depth: depth + 1,
-    });
-  }
-
-  try {
-    return await session.summarize(text, { context, signal });
-  } catch (error) {
-    if (!isQuotaError(error) || text.length < 2_000) throw error;
-    const partials: string[] = [];
-    for (const chunk of splitNear(text, Math.ceil(text.length / 2))) {
-      partials.push(
-        await summarizeRecursively({
-          session,
-          text: chunk,
-          context,
-          signal,
-          depth: depth + 1,
-        }),
-      );
-    }
-    return await summarizeRecursively({
-      session,
-      text: partials.join("\n"),
-      context,
-      signal,
-      depth: depth + 1,
-    });
-  }
-}
-
 export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
-  const getApi = options.getApi ?? defaultGetApi;
+  const getApi = options.getApi ?? defaultGetSummarizerApi;
   const getLanguageModelApi = options.getLanguageModelApi ?? defaultGetLanguageModelApi;
   const isUserActive = options.isUserActive ?? defaultIsUserActive;
   const sessions = new Map<string, Promise<BrowserSummarizerSession | null>>();
@@ -345,7 +93,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
           event: "browser-ai:create-error",
           level: "warn",
           scope: "sidepanel",
-          detail: { length, requestKey, ...errorDetail(error) },
+          detail: { length, requestKey, ...browserAiErrorDetail(error) },
         });
         sessions.delete(key);
         return null;
@@ -369,7 +117,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
         event: "browser-ai:availability-error",
         level: "warn",
         scope: "sidepanel",
-        detail: errorDetail(error),
+        detail: browserAiErrorDetail(error),
       });
       return "unavailable" as const;
     });
@@ -404,7 +152,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
           event: "browser-ai:prompt-create-error",
           level: "warn",
           scope: "sidepanel",
-          detail: { imageInput, requestKey, ...errorDetail(error) },
+          detail: { imageInput, requestKey, ...browserAiErrorDetail(error) },
         });
         promptSessions.delete(key);
         return null;
@@ -430,7 +178,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
           event: "browser-ai:prompt-availability-error",
           level: "warn",
           scope: "sidepanel",
-          detail: { imageInput, ...errorDetail(error) },
+          detail: { imageInput, ...browserAiErrorDetail(error) },
         });
         return "unavailable" as const;
       });
@@ -522,7 +270,6 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
         text: input.text,
         context,
         signal: controller.signal,
-        depth: 0,
       });
       const summary =
         request === activeRequests.get(requestKey) && result.trim() ? result.trim() : null;
@@ -547,7 +294,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
           chars: input.text.length,
           length: input.length,
           requestKey,
-          ...errorDetail(error),
+          ...browserAiErrorDetail(error),
         },
       });
       return null;
@@ -637,7 +384,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
       });
       return { kind: "success", text, contextUsage, contextWindow };
     } catch (error) {
-      if (isQuotaError(error)) {
+      if (isBrowserAiQuotaError(error)) {
         return { kind: "too-large", contextUsage, contextWindow };
       }
       logExtensionEvent({
@@ -649,7 +396,7 @@ export function createBrowserAiSummaryRuntime(options: RuntimeOptions) {
           chars,
           imageInput,
           requestKey,
-          ...errorDetail(error),
+          ...browserAiErrorDetail(error),
         },
       });
       return null;

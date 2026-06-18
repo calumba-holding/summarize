@@ -20,36 +20,15 @@ import type { ExtractResponse } from "./content-script-bridge";
 import type { ExtractorContext } from "./extractors/router";
 import { ensurePreparedPanelTranscript, preparePanelContent } from "./panel-content-preparation";
 import { startPanelDaemonSummary } from "./panel-summary-daemon";
+import {
+  beginSummaryRequest,
+  createSummaryRunId,
+  recordActiveSummaryRun,
+  shouldSkipSummaryRequest,
+  type BackgroundSummarizeSession,
+} from "./panel-summary-session";
 import type { BrowserYoutubeLocalTranscript } from "./youtube-local-transcript";
 import { extractYouTubeTranscriptInTab } from "./youtube-transcript";
-
-type DaemonRecoveryLike = {
-  recordFailure: (url: string) => void;
-};
-
-type DaemonStatusLike = {
-  markReady: () => void;
-};
-
-type BackgroundSummarizeSession = {
-  windowId: number;
-  runController: AbortController | null;
-  inflightUrl: string | null;
-  lastSummarizedUrl: string | null;
-  inflightRequest: {
-    url: string;
-    inputMode: "page" | "video" | null;
-    slides: boolean;
-  } | null;
-  activeSummaryRun: {
-    run: RunStart;
-    startedAt: number;
-    inputMode: "page" | "video" | null;
-    slides: boolean;
-  } | null;
-  daemonRecovery: DaemonRecoveryLike;
-  daemonStatus: DaemonStatusLike;
-};
 
 type StoreLike = {
   isPanelOpen: (session: BackgroundSummarizeSession) => boolean;
@@ -182,67 +161,32 @@ export async function summarizeActiveTab({
   const prefersUrlModeForTab = extractionPlan.prefersUrlMode;
   const requestedWantsSlides =
     settings.slidesEnabled && (requestedInputMode === "video" || prefersUrlModeForTab);
-  const matchesRequestedRun = (candidate: {
-    url: string;
-    inputMode: "page" | "video" | null;
-    slides: boolean;
-  }) =>
-    urlsMatch(candidate.url, tabUrl) &&
-    candidate.inputMode === requestedInputMode &&
-    candidate.slides === requestedWantsSlides;
-  const canCoalesceSameUrl =
-    !opts?.refresh &&
-    reason !== "length-change" &&
-    !(useStandaloneExtraction && reason === "manual");
-  const activeRun = session.activeSummaryRun;
+  const requestedRun = {
+    url: tabUrl,
+    inputMode: requestedInputMode,
+    slides: requestedWantsSlides,
+  };
   if (
-    canCoalesceSameUrl &&
-    activeRun &&
-    Date.now() - activeRun.startedAt < 15_000 &&
-    matchesRequestedRun({
-      url: activeRun.run.url,
-      inputMode: activeRun.inputMode,
-      slides: activeRun.slides,
+    shouldSkipSummaryRequest({
+      session,
+      request: requestedRun,
+      refresh: Boolean(opts?.refresh),
+      reason,
+      standaloneExtraction: useStandaloneExtraction,
+      autoSummarize: settings.autoSummarize,
+      manual: isManual,
+      urlsMatch,
     })
   ) {
     sendStatus("");
     return;
   }
-  if (
-    canCoalesceSameUrl &&
-    session.inflightRequest &&
-    matchesRequestedRun(session.inflightRequest)
-  ) {
-    sendStatus("");
-    return;
-  }
-  if (
-    settings.autoSummarize &&
-    !isManual &&
-    canCoalesceSameUrl &&
-    session.lastSummarizedUrl &&
-    urlsMatch(session.lastSummarizedUrl, tabUrl)
-  ) {
-    sendStatus("");
-    return;
-  }
 
-  session.runController?.abort();
-  const controller = new AbortController();
-  session.runController = controller;
-  session.inflightUrl = tabUrl;
-  session.inflightRequest = {
-    url: tabUrl,
-    inputMode: requestedInputMode,
-    slides: requestedWantsSlides,
-  };
-  const isSuperseded = () => controller.signal.aborted || session.runController !== controller;
-  const clearCurrentRun = () => {
-    if (session.runController !== controller) return;
-    session.runController = null;
-    session.inflightUrl = null;
-    session.inflightRequest = null;
-  };
+  const {
+    controller,
+    isSuperseded,
+    clear: clearCurrentRun,
+  } = beginSummaryRequest(session, requestedRun);
 
   const prepared = await preparePanelContent({
     tab: { id: tab.id, url: tabUrl, title: tab.title },
@@ -426,26 +370,15 @@ export async function summarizeActiveTab({
   };
 
   const sendBrowserSummarySnapshot = () => {
-    const random =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const run: RunStart = {
-      id: `browser-summary-${random}`,
+      id: createSummaryRunId("browser"),
       url: resolvedPayload.url,
       title: resolvedTitle,
       model: "Browser",
       reason,
       slides: wantsSlides,
     };
-    session.activeSummaryRun = {
-      run,
-      startedAt: Date.now(),
-      inputMode: requestedInputMode,
-      slides: requestedWantsSlides,
-    };
-    session.inflightRequest = null;
-    session.lastSummarizedUrl = resolvedPayload.url;
+    recordActiveSummaryRun({ session, run, request: requestedRun });
     const browserSummary = buildBrowserSummaryPayload({
       title: resolvedTitle,
       text: resolvedPayload.text,
@@ -492,26 +425,15 @@ export async function summarizeActiveTab({
         fetchImpl,
       });
       if (isSuperseded()) return;
-      const random =
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const run: RunStart = {
-        id: `direct-summary-${random}`,
+        id: createSummaryRunId("direct"),
         url: resolvedPayload.url,
         title: resolvedTitle,
         model: `${providerLabel(result.config.provider)} · ${result.config.model}`,
         reason,
         slides: wantsSlides,
       };
-      session.activeSummaryRun = {
-        run,
-        startedAt: Date.now(),
-        inputMode: requestedInputMode,
-        slides: requestedWantsSlides,
-      };
-      session.inflightRequest = null;
-      session.lastSummarizedUrl = resolvedPayload.url;
+      recordActiveSummaryRun({ session, run, request: requestedRun });
       sendStatus("");
       send({ type: "run:snapshot", run, markdown: result.text });
       await startStandaloneDaemonSlides();

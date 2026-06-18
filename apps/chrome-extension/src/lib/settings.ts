@@ -1,4 +1,5 @@
 import type { SummarizeRequestOverrides } from "@steipete/summarize-core/runtime";
+import { readStoredSettings, writeStoredSettings } from "./settings-storage";
 import {
   type ColorMode,
   type ColorScheme,
@@ -78,31 +79,6 @@ export type ProviderSettings = {
   baseUrls: Partial<Record<DirectProvider, string>>;
 };
 
-const storageKey = "settings";
-const fallbackStorageKey = "summarize.settings";
-
-function getLocalStorageArea(): chrome.storage.StorageArea | null {
-  return globalThis.chrome?.storage?.local ?? null;
-}
-
-function loadFallbackSettings(): Record<string, unknown> {
-  try {
-    const raw = globalThis.localStorage?.getItem(fallbackStorageKey);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveFallbackSettings(settings: Settings): void {
-  try {
-    globalThis.localStorage?.setItem(fallbackStorageKey, JSON.stringify(settings));
-  } catch {
-    // Best-effort fallback for non-extension previews.
-  }
-}
 const COUNT_PATTERN = /^(?<value>\d+(?:\.\d+)?)(?<unit>k|m)?$/i;
 const DURATION_PATTERN = /^(?<value>\d+(?:\.\d+)?)(?<unit>ms|s|m|h)?$/i;
 const MIN_MAX_CHARS = 20_000;
@@ -433,25 +409,7 @@ export const defaultSettings: Settings = {
 };
 
 export async function loadSettings(): Promise<Settings> {
-  const storage = getLocalStorageArea();
-  const res = storage
-    ? await new Promise<Record<string, unknown>>((resolve, reject) => {
-        let settled = false;
-        const maybePromise = storage.get(storageKey, (result) => {
-          settled = true;
-          resolve(result as Record<string, unknown>);
-        });
-        if (maybePromise && typeof (maybePromise as Promise<unknown>).then === "function") {
-          (maybePromise as Promise<Record<string, unknown>>)
-            .then((result) => {
-              if (settled) return;
-              resolve(result as Record<string, unknown>);
-            })
-            .catch(reject);
-        }
-      })
-    : { [storageKey]: loadFallbackSettings() };
-  const raw = (res[storageKey] ?? {}) as Partial<Settings> & Record<string, unknown>;
+  const raw = (await readStoredSettings()) as Partial<Settings> & Record<string, unknown>;
   return {
     ...defaultSettings,
     ...raw,
@@ -556,16 +514,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
     colorScheme: normalizeColorScheme(settings.colorScheme),
     colorMode: normalizeColorMode(settings.colorMode),
   };
-  const storage = getLocalStorageArea();
-  if (!storage) {
-    saveFallbackSettings(normalized);
-    return;
-  }
-  await storage.set({
-    [storageKey]: {
-      ...normalized,
-    },
-  });
+  await writeStoredSettings(normalized);
 }
 
 export function getProviderSettings(settings: Settings): ProviderSettings {
