@@ -296,6 +296,7 @@ describe("sidepanel browser AI slides runtime", () => {
       getTranscriptTimedText: () => panelState.slides?.transcriptTimedText ?? null,
       applyGeneratedSummary: vi.fn(),
       schedulePanelCacheSync: vi.fn(),
+      fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
     await runtime.refresh();

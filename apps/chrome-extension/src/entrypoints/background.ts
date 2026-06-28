@@ -1,5 +1,6 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { createBrowserPanelCacheStore } from "../lib/browser-panel-cache";
+import { bindNativeDaemonBridge, daemonFetch, extensionFetch } from "../lib/daemon-fetch";
 import { buildDaemonRequestBody, buildSummarizeRequestBody } from "../lib/daemon-payload";
 import { createDaemonRecovery, isDaemonUnreachableError } from "../lib/daemon-recovery";
 import { createDaemonStatusTracker } from "../lib/daemon-status";
@@ -58,6 +59,10 @@ type BackgroundPanelSession = PanelSession<
   ReturnType<typeof createDaemonStatusTracker>
 >;
 export default defineBackground(() => {
+  bindNativeDaemonBridge();
+  void chrome.storage.managed
+    ?.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" })
+    .catch(() => undefined);
   if (import.meta.env.BROWSER === "chrome") {
     startYoutubeLocalTranscriptionRuntime();
   }
@@ -126,7 +131,7 @@ export default defineBackground(() => {
       buildSummarizeRequestBody,
       friendlyFetchError,
       isDaemonUnreachableError,
-      fetchImpl: (...args) => fetch(...args),
+      fetchImpl: (...args) => extensionFetch(...args),
       resolveLogLevel,
       transcribeMediaLocally:
         import.meta.env.BROWSER === "chrome" ? transcribeBrowserMediaInTab : undefined,
@@ -141,7 +146,7 @@ export default defineBackground(() => {
     send,
     sendStatus,
     extractFromTab,
-    fetchImpl: (...args) => fetch(...args),
+    fetchImpl: (...args) => extensionFetch(...args),
     logExtract,
     friendlyFetchError,
   });
@@ -249,7 +254,7 @@ export default defineBackground(() => {
         send: (msg) => {
           void send(session, msg as BgToPanel);
         },
-        fetchImpl: fetch,
+        fetchImpl: daemonFetch,
         resolveLogLevel,
       });
     },

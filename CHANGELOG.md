@@ -5,6 +5,7 @@
 ### Features
 
 - Agent workflows: add the canonical repository-owned Summarize skill for URLs, files, media, extraction, and structured JSON usage (#319, thanks @coygeek).
+- Chrome extension: migrate the optional local companion to exact-ID Native Messaging, add managed `daemonAllowed` UX and browser-enforced enterprise blocking, and preserve Direct and Browser modes without a loopback host permission.
 
 ### Fixes
 
