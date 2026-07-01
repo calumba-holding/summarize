@@ -378,6 +378,8 @@ test("options persists direct provider credentials per provider", async ({
     await expect(page.locator("#providerApiKey")).toHaveValue("openai-key");
 
     await page.locator("#provider").selectOption("anthropic");
+    await expect(page.locator("#providerApiKey")).toHaveValue("");
+    await expect(page.locator("#providerBaseUrl")).toHaveValue("");
     await page.locator("#providerApiKey").fill("anthropic-key");
     await page.locator("#providerBaseUrl").fill("https://anthropic.test");
 
