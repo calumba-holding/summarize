@@ -58,6 +58,17 @@ summarize "https://youtu.be/..." --slides
 summarize "https://youtu.be/..." --slides --slides-ocr
 ```
 
+### Larger collections via an agent
+
+For a conference track, course, or video archive, let an agent orchestrate the collection while
+`summarize` handles each item. With the [canonical Summarize skill](https://github.com/steipete/summarize/blob/main/.agents/skills/summarize/SKILL.md), the prompt can stay focused on the outcome:
+
+> Download all videos from the AI Engineer conference and use summarize to transcribe them.
+
+Ask for any additional deliverables you want: timestamped diarized transcripts, per-talk takeaways, a
+browsable index, or a best-of list tailored to your interests. The agent can handle discovery,
+downloads, retries, output naming, and verification before building collection-level analysis.
+
 ## 4. Files and stdin
 
 ```bash
