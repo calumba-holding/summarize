@@ -1,12 +1,12 @@
 # Changelog
 
-## 0.21.1 - Unreleased
+## 0.21.1 - 2026-07-03
 
 ### Fixes
 
 - Cache paths: keep non-slash tilde-prefixed paths relative instead of corrupting them during home-directory expansion (#338, thanks @fix2015).
 - Deepgram transcription: preserve full media across failed OpenAI fallbacks and retain timestamped utterances through podcast and native YouTube paths.
-- Dependencies: update the Node 24 typings after the stabilization window.
+- Dependencies: refresh the policy-eligible TypeScript native compiler preview and Node 24 typings.
 
 ## 0.21.0 - 2026-07-03
 
