@@ -111,10 +111,12 @@ export default defineConfig({
         "webNavigation",
         ...(browser === "firefox" ? [] : ["webRequest" as const]),
         "scripting",
-        ...(browser === "firefox" ? [] : ["userScripts" as const]),
-        ...(browser === "firefox" ? [] : ["debugger" as const]),
+        ...(browser !== "firefox" && process.env.SUMMARIZE_EXTENSION_DEBUGGER === "1"
+          ? (["debugger"] as const)
+          : []),
       ],
-      optional_permissions: browser === "firefox" ? ["userScripts"] : ["nativeMessaging"],
+      optional_permissions:
+        browser === "firefox" ? ["userScripts"] : ["nativeMessaging", "userScripts"],
       host_permissions: resolveExtensionHostPermissions({
         browser,
         e2eHttpTransport,
