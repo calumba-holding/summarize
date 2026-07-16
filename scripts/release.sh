@@ -235,8 +235,8 @@ phase_publish() {
   ensure_npm_version_absent "@steipete/summarize-core" "${version}"
   ensure_npm_version_absent "@steipete/summarize" "${version}"
   phase_verify_pack
-  run bash -c 'cd packages/core && pnpm publish --tag next --access public "$@"' bash "${otp_args[@]}"
-  run pnpm publish --tag next --access public "${otp_args[@]}"
+  run bash -c 'cd packages/core && pnpm publish --tag next --access public "$@"' bash ${otp_args[@]+"${otp_args[@]}"}
+  run pnpm publish --tag next --access public ${otp_args[@]+"${otp_args[@]}"}
   phase_smoke
   phase_promote_latest
 }
@@ -286,8 +286,8 @@ phase_promote_latest() {
   if [ -n "${NPM_OTP:-}" ]; then
     otp_args=(--otp "${NPM_OTP}")
   fi
-  run npm dist-tag add "@steipete/summarize-core@${version}" latest "${otp_args[@]}"
-  run npm dist-tag add "@steipete/summarize@${version}" latest "${otp_args[@]}"
+  run npm dist-tag add "@steipete/summarize-core@${version}" latest ${otp_args[@]+"${otp_args[@]}"}
+  run npm dist-tag add "@steipete/summarize@${version}" latest ${otp_args[@]+"${otp_args[@]}"}
   run npm view @steipete/summarize dist-tags.latest
   run npm view @steipete/summarize-core dist-tags.latest
 }
@@ -306,7 +306,7 @@ phase_deprecate() {
   if [ -n "${NPM_OTP:-}" ]; then
     otp_args=(--otp "${NPM_OTP}")
   fi
-  run npm deprecate "@steipete/summarize@${bad_version}" "${message}" "${otp_args[@]}"
+  run npm deprecate "@steipete/summarize@${bad_version}" "${message}" ${otp_args[@]+"${otp_args[@]}"}
   echo "ok"
 }
 
